@@ -5,56 +5,7 @@
 (require rosette/lib/angelic)
 (require "js.rkt")
 
-(require (prefix-in unsafe! racket/base))
-(require (prefix-in unsafe! racket/trace))
-
-(define (unsafe!char->string c)
-  (cond
-    [(equal? c 'SPACE) " "]
-    [(equal? c 'OPEN) "["]
-    [(equal? c 'SHUT) "]"]
-    [(equal? c 'COMMA) ","]
-    [(symbol? c) (unsafe!symbol->string c)]
-    [(number? c) (unsafe!number->string c)]
-    ))
-
-(define (unsafe!comma-splice xs)
-  (cond
-    [(empty? xs) '()]
-    [(empty? (cdr xs)) xs]
-    [else (cons (car xs) (cons ", " (unsafe!comma-splice (cdr xs))))]
-    ))
-
-(define (unsafe!js->string a)
-  (destruct a
-    [(js-error) "TypeError"]
-    [(js-null) "null"]
-    [(js-undefined) "undefined"]
-    [(js-boolean b) (if b "true" "false")]
-    [(js-number n)
-     (if (equal? n 'NaN) "NaN" (unsafe!number->string n))]
-    [(js-string s)
-     (string-append "\"" (apply string-append (map unsafe!char->string s)) "\"")]
-    [(js-object a f)
-     (if (not a) "{}"
-         (string-append
-           "["
-           (apply string-append (unsafe!comma-splice (map unsafe!js->string f)))
-           "]"))]
-    [(op-typeof a) (string-append "typeof(" (unsafe!js->string a) ")")]
-    [(op-=== a b) (string-append (unsafe!js->string a) " === " (unsafe!js->string b))]
-    [(op-== a b) (string-append (unsafe!js->string a) " == " (unsafe!js->string b))]
-    [(op-+ a b) (string-append (unsafe!js->string a) " + " (unsafe!js->string b))]
-    [(op-< a b) (string-append (unsafe!js->string a) " < " (unsafe!js->string b))]
-    [(op->= a b) (string-append (unsafe!js->string a) " >= " (unsafe!js->string b))]
-    [(op-+un a) (string-append "+" (unsafe!js->string a))]
-    [(op-! a) (string-append "!" (unsafe!js->string a))]
-    [(op-?: c t f)
-     (string-append
-       (unsafe!js->string c) " ? "
-       (unsafe!js->string t) " : "
-       (unsafe!js->string f))]
-    ))
+(define reduce-expression (misinterpreter M-standard))
 
 (define (unsafe!unit-test expr expected)
   (define out (reduce-expression expr))
@@ -185,7 +136,8 @@
 (unsafe!unit-test
   (op-+ (js-object #f '())
         (js-object #f '()))
-  (js-string '(OPEN o b j e c t SPACE O b j e c t SHUT OPEN o b j e c t SPACE O b j e c t SHUT)))
+  (js-string '(OPEN o b j e c t SPACE O b j e c t SHUT
+               OPEN o b j e c t SPACE O b j e c t SHUT)))
 
 (unsafe!unit-test
   (op-== (js-object #t '())
@@ -287,3 +239,75 @@
 (unsafe!unit-test
   (op-== (js-object #t (list (js-null) (js-undefined))) (js-string '(COMMA)))
   (js-boolean #t))
+
+(unsafe!unit-test
+  (op--un (js-number 3))
+  (js-number -3))
+
+(unsafe!unit-test
+  (op--un (js-object #f '()))
+  (js-number 'NaN))
+
+(unsafe!unit-test
+  (op--un (js-object #t '()))
+  (js-number 0))
+
+(unsafe!unit-test
+  (op-- (js-number 3) (js-number 2))
+  (js-number 1))
+
+(unsafe!unit-test
+  (op-- (js-number 3) (js-string '(2)))
+  (js-number 1))
+
+(unsafe!unit-test
+  (op-index (js-undefined) (js-number 1))
+  (js-error))
+
+(unsafe!unit-test
+  (op-index (js-null) (js-number 1))
+  (js-error))
+
+(unsafe!unit-test
+  (op-index (js-object #t (list (js-number 10) (js-number 11) (js-number 12))) (js-number 1))
+  (js-number 11))
+
+(unsafe!unit-test
+  (op-index (js-object #t (list (js-number 10) (js-number 11) (js-number 12))) (js-string '(1)))
+  (js-number 11))
+
+(unsafe!unit-test
+  (op-index (js-object #t (list (js-number 10) (js-number 11) (js-number 12))) (js-string '(0 1)))
+  (js-undefined))
+
+(unsafe!unit-test
+  (op-index (js-object #t (list (js-number 10) (js-number 11) (js-number 12))) (js-string '(- 1)))
+  (js-undefined))
+
+(unsafe!unit-test
+  (op-index (js-object #t (list (js-number 10) (js-number 11) (js-number 12))) (js-number -1))
+  (js-undefined))
+
+(unsafe!unit-test
+  (op-index (js-object #t (list (js-number 10) (js-number 11) (js-number 12))) (js-number 3))
+  (js-undefined))
+
+(unsafe!unit-test
+  (op-index (js-string '(a b c)) (js-number 1))
+  (js-string '(b)))
+
+(unsafe!unit-test
+  (op-index (js-string '(a b c)) (js-object #t (list (js-number 1))))
+  (js-string '(b)))
+
+(unsafe!unit-test
+  (op-index (js-string '(a b c)) (js-object #t (list (js-string '(1)))))
+  (js-string '(b)))
+
+(unsafe!unit-test
+  (op-+ (js-string '()) (op-sort (js-object #t (list (js-number 6) (js-number 8) (js-number 10) (js-number 9) (js-number 7)))))
+  (js-string '(1 0 COMMA 6 COMMA 7 COMMA 8 COMMA 9)))
+
+(unsafe!unit-test
+  (op-sort (js-object #t (list (js-string '()) (js-object #t '()))))
+           (js-object #t (list (js-string '()) (js-object #t '()))))

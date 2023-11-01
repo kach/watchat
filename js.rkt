@@ -13,62 +13,120 @@
 ;; https://262.ecma-international.org/11.0/
 ;; https://tc39.es/ecma262
 ;; 6.1 We only support:
-;;     Undefined, Null, Boolean, String,
-;;     Number (positive integers and NaN),
-;;     Object (empty or Array)
+;;     Undefined, Null, Boolean, String (not String objects though),
+;;     Number (positive integers and NaN), Object (empty or Array)
 
-;; 12.8.4 unary/binary -
+;;;; TODO:
 ;; 18.2.5 parseInt
-;; 23.1.3.30.2 Array.sort
-;;  --> two possible bugs, stringification and comparison should output int not bool
-;; prompt() -> returns arbitrary string
-;; array indexing (by 0 or by 1)
-;; 10.4.3.5 string indexing (0 or 1)
+;; 13.13.1 boolean &&, ||
+;; 23.1.3.30.2 Array.sort comparison function
+;; prompt() -> for I/O, returns arbitrary string
+;; operator precedence??
 
-
+;; 6.1
 (struct js-error () #:transparent)
 (struct js-null () #:transparent)
 (struct js-undefined () #:transparent)
 (struct js-boolean (value) #:transparent)
 (struct js-number (value) #:transparent)
-(struct js-string (value) #:transparent)  ; primitive vs. object?
+(struct js-string (value) #:transparent)
 (struct js-object (is-array? elements) #:transparent)
 
 (struct op-typeof (value) #:transparent)
 (struct op-! (a) #:transparent)
 (struct op-?: (c t f) #:transparent)
+(struct op-index (o i) #:transparent)
+(struct op-sort (a) #:transparent)
 
 (struct op-=== (a b) #:transparent)
 (struct op-== (a b) #:transparent)
 (struct op-+ (a b) #:transparent)
+(struct op-- (a b) #:transparent)
 (struct op-+un (a) #:transparent)
+(struct op--un (a) #:transparent)
 (struct op-< (a b) #:transparent)
 (struct op->= (a b) #:transparent)
+
 
 (define-grammar (js-expr*)
   [expr
    (choose
-     (js-null)
-     (js-undefined)
-     (js-boolean (bool))
-     (js-number (num))
-     (js-string '())
-     (js-object (bool) '())
+     (js-null) (js-undefined) (js-boolean (?? boolean?))
+     (js-number (num)) (js-string '())
+     (js-object (?? boolean?) '())
      (js-object #t (list (expr)))
 
      ((bop) (expr) (expr))
      ((uop) (expr))
      (op-?: (expr) (expr) (expr))
      )]
-  [bop (choose op-=== op-== op-+ op-+un op-< op->=)]
-  [uop (choose op-typeof op-!)]
-  [bool (choose #t #f)]
-  [num  (choose 0 1 2 10 'NaN)]
+  [bop (choose op-=== op-== op-+ op-- op-+un op-< op->= op-index)]
+  [uop (choose op-typeof op-+un op--un op-! op-sort)]
+  [num (choose 0 1 2 10 'NaN)]
   )
 
-(struct mis
-  (nullobj arrayobj naneq emptyarraytruthy arrstrundef arrstrnull)
-  #:transparent)
+
+(define-syntax (declare-mis stx)
+  (let* [(args (cdr (syntax->datum stx)))
+         (names (map first args))
+         (costs (map second args))
+         (descs (map third args))]
+  (datum->syntax stx
+    `(begin
+       (struct mis ,names #:transparent)
+       (define mis-names (list . ,descs))
+       (define mis-costs (list . ,costs)))
+    )))
+
+(declare-mis
+  (nullobj 1
+   "null has type 'object', not 'null'")
+  (arrayobj 1
+   "array has type 'object', not 'array'")
+  (naneq 1
+   "As a special case, NaN is never equal to NaN")
+  (emptyarraytruthy 1
+   "All arrays, even [], are truthy")
+  (arrstrundef 1
+   "undefined is printed as empty string in arrays")
+  (arrstrnull 1
+   "null is printed as empty string in arrays")
+  (nanstrempty 1
+   "NaN prints as the string 'NaN', not empty")
+  (nanstrzero 1
+   "NaN prints as the string 'NaN', not zero")
+  (obj0 1
+   "{} is NaN, not 0, when casted to numbers.")
+  (oneindexed 1
+   "JavaScript is 0-indexed, not 1-indexed.")
+  (undef0 1
+   "undefined casts to NaN, not 0")
+  (nullnan 1
+   "null casts to 0, not NaN")
+)
+
+
+(define (make-list n v)
+  (if (= n 0) '()
+      (cons v (make-list (- n 1) v))))
+
+(define (make-symlist* n type?)
+  (if (= n 0) '()
+      (begin
+        (define-symbolic* x* type?)
+        (cons x* (make-symlist* (- n 1) type?)))))
+
+(define M-standard
+  (apply mis (make-list (length mis-names) #f)))
+
+(define (make-mis*)
+  (apply mis (make-symlist* (length mis-names) boolean?)))
+
+(define (mis-cost M)
+  (apply + (map (lambda (x) (if x 1 0))
+                (cdr (vector->list (struct->vector M))))))
+
+
 
 (define (misinterpreter M)
 
@@ -102,9 +160,15 @@
   (define a+ (sem-ToBoolean a))
   (js-boolean (not (js-boolean-value a+))))
 
-;; 13.5.7
+;; 13.5.4
 (define (sem-op-+un a)
   (sem-ToNumber a))
+
+;; 13.5.5
+(define (sem-op--un a)
+  (let [(n (sem-ToNumber (sem-ToPrimitive a 'NUMBER)))]
+       (if (equal? (js-number-value n) 'NaN) n
+           (js-number (- (js-number-value n))))))
 
 ;; 13.14.1
 (define (sem-op-?: c t f)  ;; NOT EAGER
@@ -116,10 +180,67 @@
              (reduce-expression f))]
              ))
 
+
+;; 7.1.19 (sem-ToPropertyKey i)
+(define (sem-ToPropertyKey i)
+  (sem-ToString (sem-ToPrimitive i 'STRING)))
+
+;; 7.1.21
+(define (sem-CanonicalNumericIndexString s)
+  (if (equal? (js-string-value s) '(- 0))
+      (js-number 0)
+      (let [(n (sem-ToNumber s))]
+           (if (equal? (sem-ToString n) s)
+               n (js-undefined)))))
+
+;; 6.1.7
+(define (sem-IsIntegerIndex s)
+  (let [(n (sem-CanonicalNumericIndexString s))]
+       (cond
+         [(js-undefined? n) #f]
+         [(equal? (js-number-value n) 'NaN) #f]
+         ;; NOT allows negative indexing
+         [(< (js-number-value n) 0) #f]
+         [(mis-oneindexed M) (- (js-number-value n) 1)]
+         [else (js-number-value n)]
+         )))
+
+;; 7.1.18 (ToObject)
+;; 13.3.3 (reference record), 6.2.5.5 (GetValue)
+
+(define (sem-op-index o i)
+  (let* [(k (sem-ToPropertyKey i))
+         (n (sem-IsIntegerIndex k))]
+    (cond
+      [(js-undefined? o) (js-error)]
+      [(js-null? o) (js-error)]
+      [(js-number? o) (js-undefined)]
+      [(js-boolean? o) (js-undefined)]
+
+      [(and (js-object? o)
+            (not (js-object-is-array? o))) (js-undefined)]
+
+      ;; 10.4.2 Array exotic objects
+      [(and (js-object? o) (js-object-is-array? o))
+       (if (and n (< n (length (js-object-elements o))))
+           (list-ref (js-object-elements o) n)
+           (js-undefined))]
+
+      ;; 10.4.3.5 String exotic objects
+      [(js-string? o)
+       (if (and n (< n (length (js-string-value o))))
+           (js-string (list (list-ref (js-string-value o) n)))
+           (js-undefined))]
+
+      [else (js-undefined)]
+      )))
+
 ;; 6.1.6.1.20
 (define (sem-Number::toString n [gas 3])
   (cond [(= gas 0) '(I n f i n i t y)]
-        [(equal? n 'NaN) '(N a N)]  ;; NOT ZERO, EMPTY, etc.
+        [(and (mis-nanstrempty M) (equal? n 'NaN)) '()]
+        [(and (mis-nanstrzero M) (equal? n 'NaN)) '(0)]
+        [(equal? n 'NaN) '(N a N)]
         [(< n 0) (cons '- (sem-Number::toString (- n) (- gas 1)))]
         [(< n 10) (list n)]
         [else (append (sem-Number::toString (quotient n 10) (- gas 1)) (list (remainder n 10)))]
@@ -147,6 +268,7 @@
           (js-object? a)
           (js-object-is-array? a)
           (empty? (js-object-elements a))) (js-boolean #f)]
+    ; NOT bool via ToString, e.g. bool([null]) might be false
     [else (js-boolean #t)]
     ))
 
@@ -193,11 +315,17 @@
 (define (sem-ToNumber a [final #f])
   (cond
     [(js-number? a) a]
+
+    [(and (mis-undef0 M) (js-undefined? a)) (js-number 0)]
     [(js-undefined? a) (js-number 'NaN)]
+
+    [(and (mis-nullnan M) (js-null? a)) (js-number 'NaN)]
     [(js-null? a) (js-number 0)]
+
     [(and (js-boolean? a) (not (js-boolean-value a))) (js-number 0)]
     [(and (js-boolean? a) (js-boolean-value a)) (js-number 1)]
     [(js-string? a) (js-number (sem-StringToNumber (js-string-value a)))]
+    [(and (mis-obj0 M) (js-object? a) (not (js-object-is-array? a))) (js-number 0)]
     [final (js-error)]
     [else (sem-ToNumber (sem-ToPrimitive a 'NUMBER) #t)]
     ))
@@ -285,6 +413,16 @@
                     (js-number (+ (js-number-value lPrim)
                                   (js-number-value rPrim))))))))
 
+;; 13.8.2 -> 13.15.3
+(define (sem-op-- x y)
+  (let [(lNum (sem-ToNumber (sem-ToPrimitive x 'NUMBER)))
+        (rNum (sem-ToNumber (sem-ToPrimitive y 'NUMBER)))]
+       (if (or (equal? 'NaN (js-number-value lNum))
+               (equal? 'NaN (js-number-value rNum)))
+           (js-number 'NaN)
+           (js-number (- (js-number-value lNum)
+                         (js-number-value rNum))))))
+
 ;; 6.1.6.1.12
 (define (sem-Number::lessThan x y)
   (cond
@@ -326,6 +464,53 @@
           [else (js-boolean #t)]
           )))
 
+
+;; 23.1.3.30.2
+(define (sem-CompareArrayElements x y)
+; (printf "~a ~a\n" x y)
+  (cond
+    [(and (js-undefined? x) (js-undefined? y)) (js-number 0)]
+    [(js-undefined? x) (js-number 1)]
+    [(js-undefined? y) (js-number -1)]
+    ; TODO: comparefn
+    [else ;; NOT doesn't cast to string
+     (let [(xString (sem-ToString x))
+           (yString (sem-ToString y))]
+          (cond
+            [(js-boolean-value (sem-op-< xString yString))
+             (js-number -1)]
+            [(js-boolean-value (sem-op-< yString xString))
+             (js-number 1)]
+            [else (js-number 0)]
+            ))]))
+
+;; (c) 2023 William Alexander Brandon (WAB) (dictated orally)
+(define (merge l1 l2)
+  (cond
+    [(empty? l1) l2]
+    [(empty? l2) l1]
+    [(>= 0 (js-number-value
+            (sem-CompareArrayElements (car l1) (car l2))))
+     (cons (car l1) (merge (cdr l1) l2))]
+    [else
+     (cons (car l2) (merge l1 (cdr l2)))]
+     ))
+
+(define (mergesort l)
+  (let [(len (length l))]
+       (if (<= len 1) l
+           (let-values
+             [((head tail) (split-at l 1))]
+             (merge (mergesort head) (mergesort tail))))))
+
+(define (sem-Array.prototype.sort a)
+  (cond
+    [(and (js-object? a) (js-object-is-array? a))
+     (js-object #t (mergesort (js-object-elements a)))]
+    ; NOT can sort strings?
+    [else (js-error)]
+    ))
+
 (define (reduce-unop op a)
   (let* [(a+ (reduce-expression a))]
     (if (js-error? a+) a+ (op a+))))
@@ -350,59 +535,119 @@
     [(op-typeof a) (reduce-unop sem-typeof a)]
     [(op-! a) (reduce-unop sem-op-! a)]
     [(op-?: c t f) (sem-op-?: c t f)]
+    [(op-index o i) (reduce-binop sem-op-index o i)]
+    [(op-sort a) (reduce-unop sem-Array.prototype.sort a)]
+
     [(op-=== a b) (reduce-binop sem-op-=== a b)]
     [(op-==  a b) (reduce-binop sem-op-==  a b)]
     [(op-+ a b) (reduce-binop sem-op-+ a b)]
+    [(op-- a b) (reduce-binop sem-op-- a b)]
     [(op-< a b) (reduce-binop sem-op-< a b)]
     [(op->= a b) (reduce-binop sem-op->= a b)]
     [(op-+un a) (reduce-unop sem-op-+un a)]
+    [(op--un a) (reduce-unop sem-op--un a)]
     ))
 
 #;(trace
-  sem-typeof
-  sem-op-!
-  sem-op-+un
-  sem-op-?:
-  sem-Number::toString
-  sem-Number::equal
-  sem-ToBoolean
-  sem-Array::toString-stringify
-  sem-Array::toString-intercalate
-  sem-Array::toString
-  sem-Object::toString
-  sem-Object::valueOf
-  sem-ToPrimitive
-  sem-ToNumber
-  sem-StringToNumber
-  sem-StringToNumber-helper
-  sem-ToString
-  sem-op-===
-  sem-op-==
-  sem-op-+
-  sem-Number::lessThan
-  sem-String::lessThan
-  sem-op-<
-  sem-op->=)
+; sem-typeof
+; sem-op-!
+; sem-op-+un
+; sem-op--un
+; sem-op-?:
+; sem-ToPropertyKey
+; sem-CanonicalNumericIndexString
+; sem-IsIntegerIndex
+; sem-op-index
+; sem-CompareArrayElements
+; sem-Array.prototype.sort
+; mergesort merge my-split-at
+; sem-Number::toString
+; sem-Number::equal
+; sem-ToBoolean
+; sem-Array::toString-stringify
+; sem-Array::toString-intercalate
+; sem-Array::toString
+; sem-Object::toString
+; sem-Object::valueOf
+; sem-ToPrimitive
+; sem-ToNumber
+; sem-StringToNumber
+; sem-StringToNumber-helper
+; sem-ToString
+; sem-op-===
+; sem-op-==
+; sem-op-+
+; sem-op--
+; sem-Number::lessThan
+; sem-String::lessThan
+; sem-op-<
+; sem-op->=
+)
 
 reduce-expression
 )
 
-(define M-standard (mis #f #f #f #f #f #f))
-(define reduce-expression (misinterpreter M-standard))
+
+(require (prefix-in unsafe! racket/base))
+
+(define (unsafe!char->string c)
+  (cond
+    [(equal? c 'SPACE) " "]
+    [(equal? c 'OPEN) "["]
+    [(equal? c 'SHUT) "]"]
+    [(equal? c 'COMMA) ","]
+    [(symbol? c) (unsafe!symbol->string c)]
+    [(number? c) (unsafe!number->string c)]
+    ))
 
 
-#|
-(displayln "Build")
-(define p (js-expr* #:depth 2))
-(displayln "Mis 1")
-(define r1 ((misinterpreter (mis #f #f #f #f #t #f)) p))
-(displayln "Mis 2")
-(define r2 ((misinterpreter (mis #f #f #f #f #f #f)) p))
-(displayln "Asserting")
-(assert (not (equal? r1 r2)))
-(displayln "Solving")
-(define sol (solve #t))
-(displayln (evaluate p sol))
-|#
+(define (unsafe!js->string a)
+  (destruct a
+    [(js-error) "TypeError"]
+    [(js-null) "null"]
+    [(js-undefined) "undefined"]
+    [(js-boolean b) (if b "true" "false")]
+    [(js-number n)
+     (if (equal? n 'NaN) "NaN" (unsafe!number->string n))]
+    [(js-string s)
+     (string-append "\"" (apply string-append (map unsafe!char->string s)) "\"")]
+    [(js-object a f)
+     (if (not a) "{}"
+         (string-append
+           "["
+           (apply string-append (add-between (map unsafe!js->string f) ", "))
+           "]"))]
+    [(op-typeof a) (string-append "typeof(" (unsafe!js->string a) ")")]
+    [(op-=== a b)
+     (string-append "(" (unsafe!js->string a) " === " (unsafe!js->string b) ")")]
+    [(op-== a b)
+     (string-append "(" (unsafe!js->string a) " == " (unsafe!js->string b) ")")]
+    [(op-+ a b)
+     (string-append "(" (unsafe!js->string a) " + " (unsafe!js->string b) ")")]
+    [(op-- a b)
+     (string-append "(" (unsafe!js->string a) " - " (unsafe!js->string b) ")")]
+    [(op-< a b)
+     (string-append "(" (unsafe!js->string a) " < " (unsafe!js->string b) ")")]
+    [(op->= a b)
+     (string-append "(" (unsafe!js->string a) " >= " (unsafe!js->string b) ")")]
+    [(op-+un a) (string-append "+" (unsafe!js->string a))]
+    [(op--un a) (string-append "-" (unsafe!js->string a))]
+    [(op-! a) (string-append "!" (unsafe!js->string a))]
+    [(op-?: c t f)
+     (string-append
+       "("
+       (unsafe!js->string c) " ? "
+       (unsafe!js->string t) " : "
+       (unsafe!js->string f)
+       ")")]
+    [(op-index o i)
+     (string-append
+       "("
+       (unsafe!js->string o) "["
+       (unsafe!js->string i) "]"
+       ")")]
+    [(op-sort o)
+     (string-append "(" (unsafe!js->string o) ").sort()")]
+    ))
 
 (provide (all-defined-out))
