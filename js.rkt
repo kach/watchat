@@ -47,21 +47,50 @@
 (struct op-< (a b) #:transparent)
 (struct op->= (a b) #:transparent)
 
+(struct op-&& (a b) #:transparent)
+(struct op-|| (a b) #:transparent)
+(struct op-?? (a b) #:transparent)
+
+(struct op-pair (a b) #:transparent)
+
+(struct op-do (op a b c) #:transparent)
+(define (op-doify expr)
+  (destruct expr
+    [(op-typeof a) (op-do op-typeof a (js-undefined) (js-undefined))]
+    [(op-+un a) (op-do op-+un a (js-undefined) (js-undefined))]
+    [(op--un a) (op-do op--un a (js-undefined) (js-undefined))]
+    [(op-! a) (op-do op-! a (js-undefined) (js-undefined))]
+    [(op-sort o) (op-do op-sort o (js-undefined) (js-undefined))]
+
+    [(op-=== a b) (op-do op-=== a b (js-undefined))]
+    [(op-==  a b) (op-do op-== a b (js-undefined))]
+    [(op-+   a b) (op-do op-+ a b (js-undefined))]
+    [(op-- a b) (op-do op-- a b (js-undefined))]
+    [(op-< a b) (op-do op-< a b (js-undefined))]
+    [(op->= a b) (op-do op->= a b (js-undefined))]
+    [(op-index o i) (op-do op-index o i (js-undefined))]
+
+    [(op-?: c t f) (op-do op-?: c t f)]
+    [(op-&& a b) (op-do op-&& a b (js-undefined))]
+    [(op-|| a b) (op-do op-|| a b (js-undefined))]
+    [(op-?? a b) (op-do op-?? a b (js-undefined))]
+    ))
 
 (define-grammar (js-expr*)
   [expr
    (choose
-     (js-null) (js-undefined) (js-boolean (?? boolean?))
-     (js-number (num)) (js-string '())
+     (js-null) (js-undefined)
+     (js-boolean (?? boolean?))
+     (js-number (num))
+     (js-string '())
+     (js-string '(a b c))
      (js-object (?? boolean?) '())
-     (js-object #t (list (expr)))
-
-     ((bop) (expr) (expr))
-     ((uop) (expr))
-     (op-?: (expr) (expr) (expr))
+     (op-do (op) (expr) (expr) (expr))
      )]
-  [bop (choose op-=== op-== op-+ op-- op-+un op-< op->= op-index)]
-  [uop (choose op-typeof op-+un op--un op-! op-sort)]
+  [op (choose op-typeof op-+un op--un op-! op-sort
+              op-=== op-== op-+ op-- op-+un op-< op->= op-index
+              op-?: op-&& op-|| op-?? ; op-pair
+              )]
   [num (choose 0 1 2 10 'NaN)]
   )
 
@@ -103,6 +132,12 @@
    "undefined casts to NaN, not 0")
   (nullnan 1
    "null casts to 0, not NaN")
+  (sortraw 1
+   "Array.prototype.sort() casts elements (even numbers) to string and compares lexicographically")
+  (??false 1
+   "?? does not treat false as nullish")
+  (??nan 1
+   "?? does not treat nan as nullish")
 )
 
 
@@ -180,6 +215,32 @@
              (reduce-expression f))]
              ))
 
+;; 13.13.1
+(define (sem-op-&& a b)
+  (define a+ (reduce-expression a))
+  (cond [(js-error? a+) a+]
+        [(not (js-boolean-value (sem-ToBoolean a+))) a+]
+        [else (reduce-expression b)]))
+
+(define (sem-op-|| a b)
+  (define a+ (reduce-expression a))
+  (cond [(js-error? a+) a+]
+        [(js-boolean-value (sem-ToBoolean a+)) a+]
+        [else (reduce-expression b)]))
+
+(define (sem-op-?? a b)
+  (define a+ (reduce-expression a))
+  (cond [(js-error? a+) a+]
+        [(or (js-null? a+)
+             (js-undefined? a+)
+             (and (mis-??false M)
+                  (js-boolean? a+)
+                  (not (js-boolean-value a+)))
+             (and (mis-??nan M)
+                  (js-number? a+)
+                  (equal? (js-number-value a+) 'NaN)))
+         (reduce-expression b)]
+        [else a+]))
 
 ;; 7.1.19 (sem-ToPropertyKey i)
 (define (sem-ToPropertyKey i)
@@ -474,8 +535,8 @@
     [(js-undefined? y) (js-number -1)]
     ; TODO: comparefn
     [else ;; NOT doesn't cast to string
-     (let [(xString (sem-ToString x))
-           (yString (sem-ToString y))]
+     (let [(xString (if (mis-sortraw M) x (sem-ToString x)))
+           (yString (if (mis-sortraw M) y (sem-ToString y)))]
           (cond
             [(js-boolean-value (sem-op-< xString yString))
              (js-number -1)]
@@ -522,6 +583,23 @@
         (js-error)
         (op a+ b+))))
 
+(define (apply-op op a+ b+ c+)
+  (cond
+    [(equal? op op-typeof) (sem-typeof a+)]
+    [(equal? op op-!) (sem-op-! a+)]
+    [(equal? op op-index) (sem-op-index a+ b+)]
+    [(equal? op op-sort) (sem-Array.prototype.sort a+)]
+    [(equal? op op-===) (sem-op-=== a+ b+)]
+    [(equal? op op-== ) (sem-op-==  a+ b+)]
+    [(equal? op op-+) (sem-op-+ a+ b+)]
+    [(equal? op op--) (sem-op-- a+ b+)]
+    [(equal? op op-<) (sem-op-< a+ b+)]
+    [(equal? op op->=) (sem-op->= a+ b+)]
+    [(equal? op op-+un) (sem-op-+un a+)]
+    [(equal? op op--un) (sem-op--un a+)]
+    [(equal? op op-pair) (js-object #t (list a+ b+))]
+    ))
+
 (define (reduce-expression e)
   (destruct e
     [(js-error) e]
@@ -532,20 +610,28 @@
     [(js-string _) e]
     [(js-object _ _) e] ;; TODO: evaluate args blech
 
-    [(op-typeof a) (reduce-unop sem-typeof a)]
-    [(op-! a) (reduce-unop sem-op-! a)]
-    [(op-?: c t f) (sem-op-?: c t f)]
-    [(op-index o i) (reduce-binop sem-op-index o i)]
-    [(op-sort a) (reduce-unop sem-Array.prototype.sort a)]
+    [(op-do op a b c)
+     (cond
+       [(equal? op op-?:)
+        (sem-op-?: a b c)]
+       [(equal? op op-&&)
+        (sem-op-&& a b)]
+       [(equal? op op-||)
+        (sem-op-|| a b)]
+       [(equal? op op-??)
+        (sem-op-?? a b)]
 
-    [(op-=== a b) (reduce-binop sem-op-=== a b)]
-    [(op-==  a b) (reduce-binop sem-op-==  a b)]
-    [(op-+ a b) (reduce-binop sem-op-+ a b)]
-    [(op-- a b) (reduce-binop sem-op-- a b)]
-    [(op-< a b) (reduce-binop sem-op-< a b)]
-    [(op->= a b) (reduce-binop sem-op->= a b)]
-    [(op-+un a) (reduce-unop sem-op-+un a)]
-    [(op--un a) (reduce-unop sem-op--un a)]
+       [else
+        (let [(a+ (reduce-expression a))]
+             (if (js-error? a+) (js-error)
+                 (let [(b+ (reduce-expression b))]
+                      (if (js-error? b+) (js-error)
+                          (let [(c+ (reduce-expression c))]
+                               (if (js-error? c+) (js-error)
+                                   (apply-op op a+ b+ c+)
+                                   ))))))]
+       )]
+    [_ (reduce-expression (op-doify e))]
     ))
 
 #;(trace
@@ -554,6 +640,9 @@
 ; sem-op-+un
 ; sem-op--un
 ; sem-op-?:
+; sem-op-&&
+; sem-op-||
+; sem-op-??
 ; sem-ToPropertyKey
 ; sem-CanonicalNumericIndexString
 ; sem-IsIntegerIndex
@@ -617,37 +706,46 @@ reduce-expression
            "["
            (apply string-append (add-between (map unsafe!js->string f) ", "))
            "]"))]
-    [(op-typeof a) (string-append "typeof(" (unsafe!js->string a) ")")]
-    [(op-=== a b)
-     (string-append "(" (unsafe!js->string a) " === " (unsafe!js->string b) ")")]
-    [(op-== a b)
-     (string-append "(" (unsafe!js->string a) " == " (unsafe!js->string b) ")")]
-    [(op-+ a b)
-     (string-append "(" (unsafe!js->string a) " + " (unsafe!js->string b) ")")]
-    [(op-- a b)
-     (string-append "(" (unsafe!js->string a) " - " (unsafe!js->string b) ")")]
-    [(op-< a b)
-     (string-append "(" (unsafe!js->string a) " < " (unsafe!js->string b) ")")]
-    [(op->= a b)
-     (string-append "(" (unsafe!js->string a) " >= " (unsafe!js->string b) ")")]
-    [(op-+un a) (string-append "+" (unsafe!js->string a))]
-    [(op--un a) (string-append "-" (unsafe!js->string a))]
-    [(op-! a) (string-append "!" (unsafe!js->string a))]
-    [(op-?: c t f)
-     (string-append
-       "("
-       (unsafe!js->string c) " ? "
-       (unsafe!js->string t) " : "
-       (unsafe!js->string f)
-       ")")]
-    [(op-index o i)
-     (string-append
-       "("
-       (unsafe!js->string o) "["
-       (unsafe!js->string i) "]"
-       ")")]
-    [(op-sort o)
-     (string-append "(" (unsafe!js->string o) ").sort()")]
+
+    [(op-do op a b c)
+     (cond
+       [(equal? op op-typeof)
+        (format "typeof(~a)" (unsafe!js->string a))]
+       [(equal? op op-+un)
+        (format "(+~a)" (unsafe!js->string a))]
+       [(equal? op op--un)
+        (format "(-~a)" (unsafe!js->string a))]
+       [(equal? op op-!)
+        (format "(!~a)" (unsafe!js->string a))]
+       [(equal? op op-sort)
+        (format "~a.sort()" (unsafe!js->string a))]
+       [(equal? op op-===)
+        (format "(~a === ~a)" (unsafe!js->string a) (unsafe!js->string b))]
+       [(equal? op op-==)
+        (format "(~a == ~a)" (unsafe!js->string a) (unsafe!js->string b))]
+       [(equal? op op-+)
+        (format "(~a + ~a)" (unsafe!js->string a) (unsafe!js->string b))]
+       [(equal? op op--)
+        (format "(~a - ~a)" (unsafe!js->string a) (unsafe!js->string b))]
+       [(equal? op op-<)
+        (format "(~a < ~a)" (unsafe!js->string a) (unsafe!js->string b))]
+       [(equal? op op->=)
+        (format "(~a >= ~a)" (unsafe!js->string a) (unsafe!js->string b))]
+       [(equal? op op-index)
+        (format "~a[~a]" (unsafe!js->string a) (unsafe!js->string b))]
+       [(equal? op op-?:)
+        (format "(~a ? ~a : ~a)" (unsafe!js->string a) (unsafe!js->string b) (unsafe!js->string c))]
+       [(equal? op op-&&)
+        (format "(~a && ~a)" (unsafe!js->string a) (unsafe!js->string b))]
+       [(equal? op op-||)
+        (format "(~a || ~a)" (unsafe!js->string a) (unsafe!js->string b))]
+       [(equal? op op-??)
+        (format "(~a ?? ~a)" (unsafe!js->string a) (unsafe!js->string b))]
+       [(equal? op op-pair)
+        (format "[~a, ~a]" (unsafe!js->string a) (unsafe!js->string b))]
+       [else "<unknown operator>"]
+        )]
+    [_ (unsafe!js->string (op-doify a))]
     ))
 
 (provide (all-defined-out))

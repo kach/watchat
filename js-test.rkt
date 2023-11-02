@@ -311,3 +311,55 @@
 (unsafe!unit-test
   (op-sort (js-object #t (list (js-string '()) (js-object #t '()))))
            (js-object #t (list (js-string '()) (js-object #t '()))))
+
+(unsafe!unit-test
+  (op-&& (js-null) (js-number 3))
+  (js-null))
+
+(unsafe!unit-test
+  (op-&& (js-null) (js-error))
+  (js-null))
+
+(unsafe!unit-test
+  (op-&& (js-error) (js-null))
+  (js-error))
+
+(unsafe!unit-test
+  (op-&& (js-number 1) (js-null))
+  (js-null))
+
+(unsafe!unit-test
+  (op-&& (js-number 1) (js-error))
+  (js-error))
+
+(unsafe!unit-test
+  (op-&& (js-null) (js-number 3))
+  (js-null))
+
+(unsafe!unit-test
+  (op-|| (js-null) (js-error))
+  (js-error))
+
+(unsafe!unit-test
+  (op-|| (js-error) (js-null))
+  (js-error))
+
+(unsafe!unit-test
+  (op-|| (js-number 1) (js-null))
+  (js-number 1))
+
+(unsafe!unit-test
+  (op-|| (js-number 1) (js-error))
+  (js-number 1))
+
+(unsafe!unit-test
+  (op-?? (js-undefined) (js-string '(a)))
+  (js-string '(a)))
+
+(unsafe!unit-test
+  (op-?? (js-null) (js-string '(a)))
+  (js-string '(a)))
+
+(unsafe!unit-test
+  (op-?? (js-boolean #f) (js-string '(a)))
+  (js-boolean #f))

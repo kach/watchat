@@ -1,16 +1,14 @@
 #lang rosette
 
 (require rosette/lib/synthax)
-(require rosette/lib/destruct)
 (require rosette/lib/angelic)
 (require "js.rkt")
 
-(current-bitwidth 5)
-
-(begin
+#;(begin
   (displayln "Build...")
   (define M-user (make-mis*))
   (define p (time (js-expr* #:depth 2)))
+  ;(define p (op-do op-sort (op-do op-pair (js-number 10) (js-number 2) (js-undefined)) (js-undefined) (js-undefined)))
 
   (displayln "Mis 1...")
   (define r1 (time ((misinterpreter M-user) p)))
@@ -23,9 +21,8 @@
     (time (synthesize #:forall M-user
                       #:guarantee
                       (begin
-                       ;(assume (< (mis-cost M-user) 2))
-                        (assume (mis-naneq M-user))
-                        (assert (not (equal? r1 r2)))
+                       ;(assume (<= (mis-cost M-user) 2))
+                        (assert (<=> (mis-??nan M-user) (not (equal? r1 r2))))
                         ))))
   (printf "Diagnostic program: ~a\n" (unsafe!js->string (evaluate p sol)))
   (printf "True output: ~a\n" (unsafe!js->string (evaluate r2 sol)))
@@ -34,10 +31,14 @@
 
 
 
-#;(begin
+(begin
 ;(define p (op-== (op-+un (js-object #f '())) (js-number 'NaN)))
 ;(define p (op-typeof (op-?: (js-object #t '()) (js-null) (js-undefined))))
-(define p (op-index (js-string '(a b c)) (js-number 1)))
+;(define p (op-index (js-string '(a b c)) (js-number 1)))
+;(define p (op-index (op-sort (js-object #t (list (js-number 11) (js-number 9)))) (js-number 0)))
+;(define p (op-index (op-sort (js-object #t (list (js-number 11) (js-number 10)))) (js-number 1)))
+;(define p (op-?? (op-== (js-number 'NaN) (js-number 'NaN)) (js-number 3)))
+(define p (op-?? (js-number 'NaN) (js-number 3)))
 
 (printf "Surprising behavior observed by user:\n  ~a → ~a\n"
         (unsafe!js->string p)
