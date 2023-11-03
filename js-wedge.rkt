@@ -4,7 +4,7 @@
 (require rosette/lib/angelic)
 (require "js.rkt")
 
-#;(begin
+(begin
   (displayln "Build...")
   (define M-user (make-mis*))
   (define p (time (js-expr* #:depth 2)))
@@ -31,7 +31,7 @@
 
 
 
-(begin
+#;(begin
 ;(define p (op-== (op-+un (js-object #f '())) (js-number 'NaN)))
 ;(define p (op-typeof (op-?: (js-object #t '()) (js-null) (js-undefined))))
 ;(define p (op-index (js-string '(a b c)) (js-number 1)))

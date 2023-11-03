@@ -374,6 +374,7 @@
 
 ;; 7.1.4
 (define (sem-ToNumber a [final #f])
+  (for/all ([a a]) ; performance critical!
   (cond
     [(js-number? a) a]
 
@@ -390,6 +391,7 @@
     [final (js-error)]
     [else (sem-ToNumber (sem-ToPrimitive a 'NUMBER) #t)]
     ))
+    )
 
 ;; 7.1.4.1.1
 (define (sem-StringToNumber a)
