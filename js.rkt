@@ -89,7 +89,7 @@
      )]
   [op (choose op-typeof op-+un op--un op-! op-sort
               op-=== op-== op-+ op-- op-+un op-< op->= op-index
-              op-?: op-&& op-|| op-?? ; op-pair
+              op-?: op-&& op-|| op-?? op-pair
               )]
   [num (choose 0 1 2 10 'NaN)]
   )
@@ -115,7 +115,7 @@
   (naneq 1
    "As a special case, NaN is never equal to NaN")
   (emptyarraytruthy 1
-   "All arrays, even [], are truthy")
+   "Empty objects like {} and [] are truthy")
   (arrstrundef 1
    "undefined is printed as empty string in arrays")
   (arrstrnull 1
@@ -138,7 +138,16 @@
    "?? does not treat false as nullish")
   (??nan 1
    "?? does not treat nan as nullish")
+  (+arrcat 1
+   "The + operator does not concatenate arrays")
+  (boolopsbool 1
+   "Short-circuiting boolean operators like && and || return the determining operand rather than a boolean")
+  (==strict 1
+   "The == operator does a series of type coercions.")
+  (+semistrict 1
+   "The + operator always tries to cast its operands to number or string.")
 )
+(printf "Loaded ~a misconceptions.\n" (length mis-names))
 
 
 (define (make-list n v)
@@ -165,20 +174,24 @@
 
 (define (misinterpreter M)
 
+(define ASCII '(
+  SPACE COMMA
+  0 1 2 3 4 5 6 7 8 9
+  A B C D E F G H I J K L M
+  N O P Q R S T U V W X Y Z
+  OPEN SHUT
+  a b c d e f g h i j k l m
+  n o p q r s t u v w x y z
+))
+
 (define (char->codepoint c)
-  (- (length
-       (member c '(
-         SPACE COMMA
-         0 1 2 3 4 5 6 7 8 9
-         A B C D E F G H I J K L M
-         N O P Q R S T U V W X Y Z
-         OPEN SHUT
-         a b c d e f g h i j k l m
-         n o p q r s t u v w x y z
-  )))))
+  (for/all ([c c])
+  (length-bv (member c ASCII) (bitvector 8)))
+  )
 
 ;; 13.5.3
 (define (sem-typeof a)
+  (for/all ([a a])
   (cond
     [(and (mis-nullobj M) (js-null? a)) (js-string '(n u l l))]
     [(js-null? a) (js-string '(o b j e c t))]
@@ -189,6 +202,7 @@
     [(and (mis-arrayobj M) (js-object? a) (js-object-is-array? a)) (js-string '(a r r a y))]
     [(js-object? a) (js-string '(o b j e c t))]
     ))
+    )
 
 ;; 13.5.7
 (define (sem-op-! a)
@@ -220,13 +234,15 @@
   (define a+ (reduce-expression a))
   (cond [(js-error? a+) a+]
         [(not (js-boolean-value (sem-ToBoolean a+))) a+]
-        [else (reduce-expression b)]))
+        [else ((if (mis-boolopsbool M) sem-ToBoolean identity)
+               (reduce-expression b))]))
 
 (define (sem-op-|| a b)
   (define a+ (reduce-expression a))
   (cond [(js-error? a+) a+]
         [(js-boolean-value (sem-ToBoolean a+)) a+]
-        [else (reduce-expression b)]))
+        [else ((if (mis-boolopsbool M) sem-ToBoolean identity)
+               (reduce-expression b))]))
 
 (define (sem-op-?? a b)
   (define a+ (reduce-expression a))
@@ -327,8 +343,9 @@
 
     [(and (mis-emptyarraytruthy M)
           (js-object? a)
-          (js-object-is-array? a)
-          (empty? (js-object-elements a))) (js-boolean #f)]
+          (=> (js-object-is-array? a)
+              (empty? (js-object-elements a))))
+     (js-boolean #f)]
     ; NOT bool via ToString, e.g. bool([null]) might be false
     [else (js-boolean #t)]
     ))
@@ -345,10 +362,14 @@
     ))
 
 (define (sem-Array::toString-intercalate xs)
-  (if (empty? xs) '()
-      (let [(tail (sem-Array::toString-intercalate (cdr xs)))
-            (head (js-string-value (sem-Array::toString-stringify (car xs))))]
-           (if (empty? (cdr xs)) head (append head '(COMMA) tail)))))
+; (for/all ([xs xs #:exhaustive])
+  (apply append
+    (add-between
+      (map (lambda (x) (js-string-value
+                         (sem-Array::toString-stringify x)))
+        xs)
+      '(COMMA))))
+; )
 
 (define (sem-Array::toString arr)
   ;; NOT square brackets around the output
@@ -459,9 +480,17 @@
     [else (js-boolean #f)]
     ))
 
-;; 13.8.1 -> 13.15.3
+;; 13.8.1 -> 13.15.3 -> 6.1.6.1.7
 (define (sem-op-+ x y)
-  ;; NOT works for arrays
+  (if (and (mis-+arrcat M)
+           (js-object? x) (js-object-is-array? x)
+           (js-object? y) (js-object-is-array? y))
+      (js-object #t (append (js-object-elements x) (js-object-elements y)))
+  (if (and (mis-+semistrict M)
+           (not (js-number? x))
+           (not (js-string? x))
+           (not (js-number? y))
+           (not (js-string? y))) (js-error)
   (let [(lPrim (sem-ToPrimitive x 'NUMBER))
         (rPrim (sem-ToPrimitive y 'NUMBER))]
        (if (or (js-string? lPrim) (js-string? rPrim))
@@ -470,11 +499,11 @@
                        (js-string-value (sem-ToString rPrim))))
            (let [(lNum (sem-ToNumber lPrim))
                  (rNum (sem-ToNumber rPrim))]
-                (if (or (equal? 'NaN (js-number-value lPrim))
-                        (equal? 'NaN (js-number-value rPrim)))
+                (if (or (equal? 'NaN (js-number-value lNum))
+                        (equal? 'NaN (js-number-value rNum)))
                     (js-number 'NaN)
-                    (js-number (+ (js-number-value lPrim)
-                                  (js-number-value rPrim))))))))
+                    (js-number (+ (js-number-value lNum)
+                                  (js-number-value rNum))))))))))
 
 ;; 13.8.2 -> 13.15.3
 (define (sem-op-- x y)
@@ -502,8 +531,8 @@
     [else
      (let [(cx (char->codepoint (car x)))
            (cy (char->codepoint (car y)))]
-          (cond [(< cx cy) #t]
-                [(> cx cy) #f]
+          (cond [(bvugt cx cy) #t]
+                [(bvult cx cy) #f]
                 [else (sem-String::lessThan (cdr x) (cdr y))]
                 ))]
     ))
@@ -591,7 +620,11 @@
     [(equal? op op-!) (sem-op-! a+)]
     [(equal? op op-index) (sem-op-index a+ b+)]
     [(equal? op op-sort) (sem-Array.prototype.sort a+)]
-    [(equal? op op-===) (sem-op-=== a+ b+)]
+    [(or
+       (equal? op op-===)
+       (and (mis-==strict M)
+            (equal? op op-==)))
+     (sem-op-=== a+ b+)]
     [(equal? op op-== ) (sem-op-==  a+ b+)]
     [(equal? op op-+) (sem-op-+ a+ b+)]
     [(equal? op op--) (sem-op-- a+ b+)]
@@ -603,6 +636,7 @@
     ))
 
 (define (reduce-expression e)
+  (for/all ([e e])
   (destruct e
     [(js-error) e]
     [(js-null) e]
@@ -635,6 +669,7 @@
        )]
     [_ (reduce-expression (op-doify e))]
     ))
+    )
 
 #;(trace
 ; sem-typeof
