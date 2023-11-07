@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+<script src="https://unpkg.com/esprima@~4.0/dist/esprima.js"></script>
+
+<style>
+  body {
+    max-width: 40em;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  #log pre.inp {
+    border-top: 1px solid lightblue;
+  }
+</style>
+
+<h1>wat/chat</h1>
+<input type="text" id="prompt" style="width: 100%;" autofocus/>
+<div id="log"></div>
+
+<script>
+var n = 0;
+
+window.addEventListener('load', function() {
+  const prompt = document.getElementById('prompt');
+  const log = document.getElementById('log');
+
+  prompt.addEventListener('change', function() {
+    const src = '(' + this.value + ')';
+
+    const inp = document.createElement('pre');
+    inp.className = 'inp';
+    const out = document.createElement('pre');
+    out.className = 'out';
+    const wat = document.createElement('a');
+    wat.href = '#';
+    wat.textContent = '(WAT?)';
+    // log.prepend(wat);
+    log.prepend(out);
+    log.prepend(inp);
+
+    inp.textContent = 'In[' + (++n) + ']: ' + src;
+
+    var ast;
+    try {
+      ast = esprima.parseScript(src);
+    } catch(e) {
+      return out.textContent = 'Parse error: ' + e.description;
+    }
+
+    if (ast.type !== 'Program') {
+      return out.textContent = 'Parsing?';
+    }
+    if (ast.body.length !== 1) {
+      return out.textContent = 'I only support parsing one expression at a time.';
+    }
+    if (ast.body[0].type !== 'ExpressionStatement') {
+      return out.textContent = 'I only support expression statements.';
+    }
+    const expr = ast.body[0].expression;
+
+    function reqListener() {
+      const res = JSON.parse(this.responseText);
+      out.textContent = 'Out[' + n + ']: ' + res.out + '\t';
+
+      if (res.explanations.length === 0) return;
+
+      out.appendChild(wat);
+      wat.addEventListener('click', function() {
+        const myself = this;
+        for (var i = 0; i < res.explanations.length; i++) {
+          const data = document.createElement('details');
+          const summ = document.createElement('summary');
+          const text = document.createElement('pre');
+          summ.textContent = 'I expected ' + res.explanations[i].out;
+          data.appendChild(summ);
+          data.appendChild(text);
+          text.textContent = res.explanations[i].text;
+          myself.insertAdjacentElement('afterend', data);
+        }
+        myself.remove();
+      });
+    }
+
+    const req = new XMLHttpRequest();
+    req.addEventListener("load", reqListener);
+    req.open("GET", "/run/wat?name=" + encodeURIComponent(JSON.stringify(expr)));
+    req.send();
+
+  });
+});
+</script>

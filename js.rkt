@@ -146,8 +146,12 @@
    "The == operator does a series of type coercions.")
   (+semistrict 1
    "The + operator always tries to cast its operands to number or string.")
+  (objstr 1
+   "Objects cast to the string '[object Object]'")
+  (arrstrbrackets 1
+   "When stringified, arrays don't have []s around them.")
 )
-(printf "Loaded ~a misconceptions.\n" (length mis-names))
+(printf "I'm aware of ~a misconceptions.\n" (length mis-names))
 
 
 (define (make-list n v)
@@ -182,6 +186,7 @@
   OPEN SHUT
   a b c d e f g h i j k l m
   n o p q r s t u v w x y z
+  OPENCURLY SHUTCURLY
 ))
 
 (define (char->codepoint c)
@@ -372,14 +377,18 @@
 ; )
 
 (define (sem-Array::toString arr)
-  ;; NOT square brackets around the output
-  (js-string (sem-Array::toString-intercalate (js-object-elements arr))))
+  (let ([str (sem-Array::toString-intercalate (js-object-elements arr))])
+    (if (mis-arrstrbrackets M)
+        (js-string (append '(OPEN) str '(SHUT)))
+        (js-string str))))
 
 ;; 20.1.3.6
 (define (sem-Object::toString obj)
   (if (js-object-is-array? obj)
     (sem-Array::toString obj)
-    (js-string '(OPEN o b j e c t SPACE O b j e c t SHUT))))
+    (if (mis-objstr M)
+        (js-string '(OPENCURLY SHUTCURLY))
+        (js-string '(OPEN o b j e c t SPACE O b j e c t SHUT)))))
 
 ;; 20.1.3.7
 (define (sem-Object::valueOf obj) obj)
@@ -457,7 +466,6 @@
 ;; 7.2.14
 (define (sem-op-== x y [gas 4])
   (cond
-    ;; NOT just strict ===
     [(= gas 0) (js-error)]
     [(equal? (sem-typeof x) (sem-typeof y))
      (sem-op-=== x y)]
@@ -493,6 +501,7 @@
            (not (js-string? y))) (js-error)
   (let [(lPrim (sem-ToPrimitive x 'NUMBER))
         (rPrim (sem-ToPrimitive y 'NUMBER))]
+       ; NOT if either is number, then cast the other to number
        (if (or (js-string? lPrim) (js-string? rPrim))
            (js-string
                (append (js-string-value (sem-ToString lPrim))
@@ -721,6 +730,8 @@ reduce-expression
     [(equal? c 'SPACE) " "]
     [(equal? c 'OPEN) "["]
     [(equal? c 'SHUT) "]"]
+    [(equal? c 'OPENCURLY) "{"]
+    [(equal? c 'SHUTCURLY) "}"]
     [(equal? c 'COMMA) ","]
     [(symbol? c) (unsafe!symbol->string c)]
     [(number? c) (unsafe!number->string c)]

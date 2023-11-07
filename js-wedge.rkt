@@ -3,35 +3,9 @@
 (require rosette/lib/synthax)
 (require rosette/lib/angelic)
 (require "js.rkt")
+(require "js-wat.rkt")
 
-(define (explain-program p)
-    (printf "Surprising behavior observed by user:\n  ~a → ~a\n"
-            (unsafe!js->string p)
-            (unsafe!js->string ((misinterpreter M-standard) p)))
-
-    (define M-user (make-mis*))
-
-    (assert (not (equal? ((misinterpreter M-user) p)
-                         ((misinterpreter M-standard) p))))
-
-    (define cost (mis-cost M-user))
-
-    (define (loop! [n 5])
-      (newline)
-      (define sol (optimize #:minimize (list cost) #:guarantee #t))
-      (unless (unsat? sol)
-        (assert (not (equal? M-user (evaluate M-user sol))))
-        (assert (<= cost (evaluate cost sol)))
-        (printf "Found explanation with cost $~a:\n" (evaluate cost sol))
-        (define lyst (cdr (vector->list (struct->vector (evaluate M-user sol)))))
-        (map displayln (map cdr (filter car (map cons lyst mis-names))))
-        (printf "Student would expect: ~a\n"
-                (unsafe!js->string ((misinterpreter (evaluate M-user sol)) p)))
-        (unless (= n 1) (loop! (- n 1)))
-      ))
-    (loop!))
-
-(begin
+#;(begin
   (displayln "Build...")
   (define M-user (make-mis*))
   (define p (time (js-expr* #:depth 2)))
@@ -61,11 +35,14 @@
     (begin
       (displayln "Synthesis returned UNSAT."))))
 
-;(explain-program (op-== (op-+un (js-object #f '())) (js-number 'NaN)))
-;(explain-program (op-typeof (op-?: (js-object #t '()) (js-null) (js-undefined))))
-;(explain-program (op-index (js-string '(a b c)) (js-number 1)))
-;(explain-program (op-index (op-sort (js-object #t (list (js-number 11) (js-number 9)))) (js-number 0)))
-;(explain-program (op-index (op-sort (js-object #t (list (js-number 11) (js-number 10)))) (js-number 1)))
-;(explain-program (op-?? (op-== (js-number 'NaN) (js-number 'NaN)) (js-number 3)))
-;(explain-program (op-?? (js-number 'NaN) (js-number 3)))
-;(explain-program (op--un (js-object #t (list (js-boolean #f) (js-boolean #f)))))
+(explain-program (op-== (op-+un (js-object #f '())) (js-number 'NaN)))
+(explain-program (op-typeof (op-?: (js-object #t '()) (js-null) (js-undefined))))
+(explain-program (op-index (js-string '(a b c)) (js-number 1)))
+(explain-program (op-index (op-sort (js-object #t (list (js-number 11) (js-number 9)))) (js-number 0)))
+(explain-program (op-index (op-sort (js-object #t (list (js-number 11) (js-number 10)))) (js-number 1)))
+(explain-program (op-?? (op-== (js-number 'NaN) (js-number 'NaN)) (js-number 3)))
+(explain-program (op-?? (js-number 'NaN) (js-number 3)))
+(explain-program (op-+ (js-object #f '()) (js-object #f '())))
+(explain-program (op-+ (js-object #t '()) (js-object #f '())))
+(explain-program (op-+ (js-object #f '()) (js-object #t '())))
+(explain-program (op-+ (js-object #t '()) (js-object #t '())))
