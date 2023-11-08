@@ -27,6 +27,8 @@
           (define cost (evaluate cost* sol))
 
           (assert (not (equal? M-user* M-user)))
+;         (assert (not (equal? ((misinterpreter M-user*) p)
+;                              ((misinterpreter M-user) p))))
           (assert (<= cost* cost))
 
           (define expected-out (unsafe!js->string ((misinterpreter M-user) p)))
@@ -44,7 +46,9 @@
               (displayln "(Possibly more...)")
               acc)
             (loop!
-              (cons (make-hasheq (list (cons 'cost cost) (cons 'out expected-out) (cons 'text explanation))) acc)
+              (cons (make-hasheq (list (cons 'cost cost)
+                                       (cons 'out expected-out)
+                                       (cons 'text explanation))) acc)
               (- n 1))))
         ))
 

@@ -363,3 +363,14 @@
 (unsafe!unit-test
   (op-?? (js-boolean #f) (js-string '(a)))
   (js-boolean #f))
+
+(unsafe!unit-test
+  (op-== (js-null) (js-object #t '()))
+  (js-boolean #f))
+
+(unsafe!unit-test
+  (op-index
+    (op-sort (js-object #t (list (op-+ (js-number 'NaN) (js-string '()))
+                                 (js-number 'NaN))))
+    (js-number 1))
+  (js-number 'NaN))

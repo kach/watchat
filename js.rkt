@@ -452,14 +452,23 @@
 ;; 7.2.15
 (define (sem-op-=== a b)
   (cond
-    [(not (equal? (sem-typeof a) (sem-typeof b)))
+    [(not
+       (or
+         (and (js-null? a) (js-null? b))
+         (and (js-undefined? a) (js-undefined? b))
+         (and (js-boolean? a) (js-boolean? b))
+         (and (js-number? a) (js-number? b))
+         (and (js-object? a) (js-object? b))
+         (and (js-string? a) (js-string? b))
+         ))
      (js-boolean #f)]
-    [(js-object? a) (js-boolean #f)]  ; references not implemented
     [(js-number? a)
      (js-boolean (sem-Number::equal (js-number-value a) (js-number-value b)))]
+
     ;; 7.2.12
     [(js-null? a) (js-boolean #t)]
     [(js-undefined? a) (js-boolean #t)]
+    [(js-object? a) (js-boolean #f)]  ; references not implemented
     [else (js-boolean (equal? a b))]
     ))
 
@@ -653,7 +662,8 @@
     [(js-boolean _) e]
     [(js-number _) e]
     [(js-string _) e]
-    [(js-object _ _) e] ;; TODO: evaluate args blech
+    [(js-object b elts)
+     (js-object b (map reduce-expression elts))] ;; TODO: handle errors
 
     [(op-do op a b c)
      (cond

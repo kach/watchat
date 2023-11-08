@@ -76,7 +76,7 @@ window.addEventListener('load', function() {
           summ.textContent = 'I expected ' + res.explanations[i].out;
           data.appendChild(summ);
           data.appendChild(text);
-          text.textContent = res.explanations[i].text;
+          text.textContent = res.explanations[i].text.join('\n');
           myself.insertAdjacentElement('afterend', data);
         }
         myself.remove();

@@ -5,7 +5,7 @@
 (require "js.rkt")
 (require "js-wat.rkt")
 
-#;(begin
+(begin
   (displayln "Build...")
   (define M-user (make-mis*))
   (define p (time (js-expr* #:depth 2)))
@@ -35,14 +35,14 @@
     (begin
       (displayln "Synthesis returned UNSAT."))))
 
-(explain-program (op-== (op-+un (js-object #f '())) (js-number 'NaN)))
-(explain-program (op-typeof (op-?: (js-object #t '()) (js-null) (js-undefined))))
-(explain-program (op-index (js-string '(a b c)) (js-number 1)))
-(explain-program (op-index (op-sort (js-object #t (list (js-number 11) (js-number 9)))) (js-number 0)))
-(explain-program (op-index (op-sort (js-object #t (list (js-number 11) (js-number 10)))) (js-number 1)))
-(explain-program (op-?? (op-== (js-number 'NaN) (js-number 'NaN)) (js-number 3)))
-(explain-program (op-?? (js-number 'NaN) (js-number 3)))
-(explain-program (op-+ (js-object #f '()) (js-object #f '())))
-(explain-program (op-+ (js-object #t '()) (js-object #f '())))
-(explain-program (op-+ (js-object #f '()) (js-object #t '())))
-(explain-program (op-+ (js-object #t '()) (js-object #t '())))
+;(explain-program (op-== (op-+un (js-object #f '())) (js-number 'NaN)))
+;(explain-program (op-typeof (op-?: (js-object #t '()) (js-null) (js-undefined))))
+;(explain-program (op-index (js-string '(a b c)) (js-number 1)))
+;(explain-program (op-index (op-sort (js-object #t (list (js-number 11) (js-number 9)))) (js-number 0)))
+;(explain-program (op-index (op-sort (js-object #t (list (js-number 11) (js-number 10)))) (js-number 1)))
+;(explain-program (op-?? (op-== (js-number 'NaN) (js-number 'NaN)) (js-number 3)))
+;(explain-program (op-?? (js-number 'NaN) (js-number 3)))
+;(explain-program (op-+ (js-object #f '()) (js-object #f '())))
+;(explain-program (op-+ (js-object #t '()) (js-object #f '())))
+;(explain-program (op-+ (js-object #f '()) (js-object #t '())))
+;(explain-program (op-+ (js-object #t '()) (js-object #t '())))
