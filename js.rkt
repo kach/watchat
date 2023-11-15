@@ -18,7 +18,6 @@
 
 ;;;; TODO:
 ;; 18.2.5 parseInt
-;; 13.13.1 boolean &&, ||
 ;; 23.1.3.30.2 Array.sort comparison function
 ;; prompt() -> for I/O, returns arbitrary string
 ;; operator precedence??
@@ -82,30 +81,36 @@
      (js-null) (js-undefined)
      (js-boolean (?? boolean?))
      (js-number (num))
-     (js-string '())
-     (js-string '(a b c))
+     (js-string (str))
      (js-object (?? boolean?) '())
      (op-do (op) (expr) (expr) (expr))
      )]
   [op (choose op-typeof op-+un op--un op-! op-sort
               op-=== op-== op-+ op-- op-+un op-< op->= op-index
-              op-?: op-&& op-|| op-?? op-pair
+              op-?: op-&& op-|| #|op-??|# op-pair
               )]
   [num (choose 0 1 2 10 'NaN)]
+  [str (choose '() '(a b c) '(OPEN) '(1))]
   )
-
 
 (define-syntax (declare-mis stx)
   (let* [(args (cdr (syntax->datum stx)))
          (names (map first args))
          (costs (map second args))
-         (descs (map third args))]
+         (texts (map third args))
+         (misify
+           (lambda (sym)
+             (string->symbol (string-append "mis-" (symbol->string sym)))))]
   (datum->syntax stx
     `(begin
        (struct mis ,names #:transparent)
-       (define mis-names (list . ,descs))
+       (define mis-names (list . ,(map misify names)))
+       (define mis-texts (list . ,texts))
        (define mis-costs (list . ,costs)))
     )))
+
+(define (make-M names)
+  (apply mis (map (lambda (name) (not (false? (member name names)))) mis-names)))
 
 (declare-mis
   (nullobj 1
@@ -124,16 +129,20 @@
    "NaN prints as the string 'NaN', not empty")
   (nanstrzero 1
    "NaN prints as the string 'NaN', not zero")
+  (nullstrempty 1
+   "null casts to the string 'null', not the empty string.")
+  (undefstrempty 1
+   "undefined casts to the string 'undefined', not the empty string.")
   (obj0 1
    "{} is NaN, not 0, when casted to numbers.")
   (oneindexed 1
    "JavaScript is 0-indexed, not 1-indexed.")
   (undef0 1
-   "undefined casts to NaN, not 0")
+   "undefined casts to number as NaN, not as 0")
   (nullnan 1
-   "null casts to 0, not NaN")
+   "null casts to number as 0, not as NaN")
   (sortraw 1
-   "Array.prototype.sort() casts elements (even numbers) to string and compares lexicographically")
+   "Array.prototype.sort() casts elements (including numbers) to string and compares lexicographically")
   (??false 1
    "?? does not treat false as nullish")
   (??nan 1
@@ -143,13 +152,29 @@
   (boolopsbool 1
    "Short-circuiting boolean operators like && and || return the determining operand rather than a boolean")
   (==strict 1
-   "The == operator does a series of type coercions.")
+   "The == operator, unlike the === operator, attempts a series of type coercions.")
   (+semistrict 1
    "The + operator always tries to cast its operands to number or string.")
   (objstr 1
    "Objects cast to the string '[object Object]'")
   (arrstrbrackets 1
    "When stringified, arrays don't have []s around them.")
+  (emptystringnan 1
+   "The empty string by definition casts to 0, not NaN")
+  (+castnum 1
+   "The + operator only attempts to add if both sides are numbers; otherwise, it casts to string and concatenates.")
+  (noimplicitobjification 1
+   "When subscripted, primitive booleans and numbers are implicitly converted to Boolean and Number objects.")
+  (==boolcoerce 1
+   "When one side of an '==' is a boolean, JS does not attempt to convert the other side to a boolean as well. Instead, the boolean is converted to a number (0 or 1) and the comparison is tried again.")
+  (>=is>or== 1
+   "The >= operator is defined as NOT <, rather than > or ==.")
+  (<castsnum 1
+   "If neither operand is a number, then comparison operators like < attempt to compare string representations of the operands lexicographically.")
+  (asciiopenshut 1
+   "The characters '[' and ']' sort after capital letters but before lowercase letters.")
+  (structuralequality 1
+   "== and === compare objects and arrays by reference, not by value.")
 )
 (printf "I'm aware of ~a misconceptions.\n" (length mis-names))
 
@@ -178,16 +203,31 @@
 
 (define (misinterpreter M)
 
-(define ASCII '(
-  SPACE COMMA
-  0 1 2 3 4 5 6 7 8 9
-  A B C D E F G H I J K L M
-  N O P Q R S T U V W X Y Z
-  OPEN SHUT
-  a b c d e f g h i j k l m
-  n o p q r s t u v w x y z
-  OPENCURLY SHUTCURLY
-))
+(define ASCII
+  (cond
+    [(mis-asciiopenshut M)
+     '(
+       SPACE COMMA
+       0 1 2 3 4 5 6 7 8 9
+       A B C D E F G H I J K L M
+       N O P Q R S T U V W X Y Z
+       a b c d e f g h i j k l m
+       n o p q r s t u v w x y z
+       OPEN SHUT
+       OPENCURLY SHUTCURLY
+     )]
+    [else
+     '(
+       SPACE COMMA
+       0 1 2 3 4 5 6 7 8 9
+       A B C D E F G H I J K L M
+       N O P Q R S T U V W X Y Z
+       OPEN SHUT
+       a b c d e f g h i j k l m
+       n o p q r s t u v w x y z
+       OPENCURLY SHUTCURLY
+     )])
+)
 
 (define (char->codepoint c)
   (for/all ([c c])
@@ -238,14 +278,14 @@
 (define (sem-op-&& a b)
   (define a+ (reduce-expression a))
   (cond [(js-error? a+) a+]
-        [(not (js-boolean-value (sem-ToBoolean a+))) a+]
+        [(not (js-boolean-value (sem-ToBoolean a+))) ((if (mis-boolopsbool M) sem-ToBoolean identity) a+)]
         [else ((if (mis-boolopsbool M) sem-ToBoolean identity)
                (reduce-expression b))]))
 
 (define (sem-op-|| a b)
   (define a+ (reduce-expression a))
   (cond [(js-error? a+) a+]
-        [(js-boolean-value (sem-ToBoolean a+)) a+]
+        [(js-boolean-value (sem-ToBoolean a+)) ((if (mis-boolopsbool M) sem-ToBoolean identity) a+)]
         [else ((if (mis-boolopsbool M) sem-ToBoolean identity)
                (reduce-expression b))]))
 
@@ -296,8 +336,9 @@
     (cond
       [(js-undefined? o) (js-error)]
       [(js-null? o) (js-error)]
-      [(js-number? o) (js-undefined)]
-      [(js-boolean? o) (js-undefined)]
+
+      [(js-number? o) (if (mis-noimplicitobjification M) (js-error) (js-undefined))]
+      [(js-boolean? o) (if (mis-noimplicitobjification M) (js-error) (js-undefined))]
 
       [(and (js-object? o)
             (not (js-object-is-array? o))) (js-undefined)]
@@ -425,7 +466,8 @@
 
 ;; 7.1.4.1.1
 (define (sem-StringToNumber a)
-  (sem-StringToNumber-helper a 0))
+  (if (and (empty? a) (mis-emptystringnan M)) 'NaN
+      (sem-StringToNumber-helper a 0)))
 
 (define (sem-StringToNumber-helper a acc)
   (cond
@@ -433,7 +475,6 @@
     [(not (member (car a) '(0 1 2 3 4 5 6 7 8 9))) 'NaN]
     [else (sem-StringToNumber-helper (cdr a) (+ (* acc 10) (car a)))]
     ;; NOT octal if 0-prefixed
-    ;; NOT empty -> NaN!
     ;; TODO: handle negative sign prefix
     ))
 
@@ -442,7 +483,9 @@
   (cond
     [(< gas 0) (js-error)]
     [(js-string? a) a]
+    [(and (mis-undefstrempty M) (js-undefined? a)) (js-string '())]
     [(js-undefined? a) (js-string '(u n d e f i n e d))]
+    [(and (mis-nullstrempty M) (js-null? a)) (js-string '())]
     [(js-null? a) (js-string '(n u l l))]
     [(js-boolean? a) (if (js-boolean-value a) (js-string '(t r u e)) (js-string '(f a l s e)))]
     [(js-number? a) (js-string (sem-Number::toString (js-number-value a)))]
@@ -452,6 +495,10 @@
 ;; 7.2.15
 (define (sem-op-=== a b)
   (cond
+    [(and
+      (js-object? a) (js-object? b)
+      (mis-structuralequality M))
+     (js-boolean (equal? a b))]
     [(not
        (or
          (and (js-null? a) (js-null? b))
@@ -485,15 +532,25 @@
      (sem-op-== x (sem-ToNumber y) (- gas 1))]
     [(and (js-string? x) (js-number? y))
      (sem-op-== (sem-ToNumber x) y (- gas 1))]
-     ;; NOT coerces other side to bools
+
+    [(and (mis-==boolcoerce M)
+          (js-boolean? x))
+     (sem-op-== x (sem-ToBoolean y) (- gas 1))]
+    [(and (mis-==boolcoerce M)
+          (js-boolean? y))
+     (sem-op-== (sem-ToBoolean x) y (- gas 1))]
+
     [(js-boolean? x)
      (sem-op-== (sem-ToNumber x) y (- gas 1))]
     [(js-boolean? y)
      (sem-op-== x (sem-ToNumber y) (- gas 1))]
+
     [(and (js-object? y) (not (js-object? x)))
      (sem-op-== x (sem-ToPrimitive y 'NUMBER) (- gas 1))]
     [(and (js-object? x) (not (js-object? y)))
      (sem-op-== (sem-ToPrimitive x 'NUMBER) y (- gas 1))]
+
+    [(mis-structuralequality M) (js-boolean (equal? x y))]
     [else (js-boolean #f)]
     ))
 
@@ -511,7 +568,12 @@
   (let [(lPrim (sem-ToPrimitive x 'NUMBER))
         (rPrim (sem-ToPrimitive y 'NUMBER))]
        ; NOT if either is number, then cast the other to number
-       (if (or (js-string? lPrim) (js-string? rPrim))
+       (if (and
+             (or (js-string? lPrim)
+                 (js-string? rPrim))
+             (not (and (mis-+castnum M)
+                       (or (js-number? lPrim)
+                           (js-number? rPrim)))))
            (js-string
                (append (js-string-value (sem-ToString lPrim))
                        (js-string-value (sem-ToString rPrim))))
@@ -557,9 +619,8 @@
 
 ;; 13.10.1 -> 7.2.13
 (define (sem-op-< x y)
-  ;; NOT casts strings to number
-  (let [(px (sem-ToPrimitive x 'NUMBER))
-        (py (sem-ToPrimitive y 'NUMBER))]
+  (let [(px (if (mis-<castsnum M) (sem-ToNumber x) (sem-ToPrimitive x 'NUMBER)))
+        (py (if (mis-<castsnum M) (sem-ToNumber y) (sem-ToPrimitive y 'NUMBER)))]
        (if (and (js-string? px) (js-string? py))
            (js-boolean (sem-String::lessThan (js-string-value px)
                                              (js-string-value py)))
@@ -568,16 +629,19 @@
            )))
 
 (define (sem-op->= x y)
-  ;; NOT the logical OR of == and !<
-  (let [(imm (sem-op-< x y))]
-    (cond [(equal? imm (js-boolean #t)) (js-boolean #f)]
-          [else (js-boolean #t)]
-          )))
+  (if (mis->=is>or== M)
+    (let [(imm> (sem-op-< y x))
+          (imm== (sem-op-== x y))]
+         (js-boolean (or (js-boolean-value imm>)
+                         (js-boolean-value imm==))))
+    (let [(imm (sem-op-< x y))]
+      (cond [(equal? imm (js-boolean #t)) (js-boolean #f)]
+            [else (js-boolean #t)]
+            ))))
 
 
 ;; 23.1.3.30.2
 (define (sem-CompareArrayElements x y)
-; (printf "~a ~a\n" x y)
   (cond
     [(and (js-undefined? x) (js-undefined? y)) (js-number 0)]
     [(js-undefined? x) (js-number 1)]
@@ -750,7 +814,7 @@ reduce-expression
 
 (define (unsafe!js->string a)
   (destruct a
-    [(js-error) "TypeError"]
+    [(js-error) "(error)"]
     [(js-null) "null"]
     [(js-undefined) "undefined"]
     [(js-boolean b) (if b "true" "false")]

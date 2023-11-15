@@ -11,11 +11,50 @@
   }
 
   #log pre.inp {
-    border-top: 1px solid lightblue;
+    border-top: 2px solid darkred;
+    padding-top: 0.5em;
+  }
+  pre {
+    white-space: pre-wrap;
+  }
+
+  #samples {
+    display: inline;
+    padding: 0;
+    margin: 0;
+  }
+  #samples li {
+    white-space: nowrap;
+    color: darkred;
+    text-decoration: underline;
+    cursor: pointer;
+    display: inline;
+    margin-right: 3em;
+    font-family: monospace;
+  }
+  #samples li:hover {
+    text-decoration: none;
   }
 </style>
 
-<h1>wat/chat</h1>
+<h1>Wat Chat</h1>
+<details><summary>Samples</summary>
+<ul id="samples">
+  <li>[1,2,3] + [4,5,6]</li>
+  <li>{} + []</li>
+  <li>{} + {}</li>
+  <li>+{} == NaN</li>
+  <li>[9, 8, 7, 6].sort()[1]</li>
+  <li>[10, 9, 8, 7].sort()[0]</li>
+  <li>null + undefined</li>
+  <li>(+null == NaN) ? 1 : 2</li>
+  <li>[] ? "nonempty" : "empty"</li>
+  <li>([] || "abc")[3]</li>
+  <li>'11' &lt; '2'</li>
+  <li>['null', typeof(null)]['1']</li>
+</ul>
+</details>
+
 <input type="text" id="prompt" style="width: 100%;" autofocus/>
 <div id="log"></div>
 
@@ -26,9 +65,17 @@ window.addEventListener('load', function() {
   const prompt = document.getElementById('prompt');
   const log = document.getElementById('log');
 
-  prompt.addEventListener('change', function() {
-    const src = '(' + this.value + ')';
+  const samples = document.querySelectorAll('#samples li');
+  console.log(samples);
+  for (var i = 0; i < samples.length; i++) {
+    console.log(samples[i]);
+    samples[i].addEventListener('click', function() {
+      const src = '(' + this.textContent + ')';
+      run_src(src);
+    });
+  }
 
+  function run_src(src) {
     const inp = document.createElement('pre');
     inp.className = 'inp';
     const out = document.createElement('pre');
@@ -88,6 +135,11 @@ window.addEventListener('load', function() {
     req.open("GET", "/run/wat?name=" + encodeURIComponent(JSON.stringify(expr)));
     req.send();
 
+  }
+
+  prompt.addEventListener('change', function() {
+    const src = '(' + this.value + ')';
+    run_src(src);
   });
 });
 </script>

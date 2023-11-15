@@ -4,6 +4,11 @@
 (require rosette/lib/angelic)
 (require "js.rkt")
 
+(define (mis->= M1 M2)
+  (andmap
+    (lambda (m) (=> (m M2) (m M1)))
+    mis-names))
+
 (define (explain-program p)
     (define true-out (unsafe!js->string ((misinterpreter M-standard) p)))
     (printf "-------\nSurprising behavior observed by user:\n  ~a → ~a\n"
@@ -26,14 +31,17 @@
           (define M-user (evaluate M-user* sol))
           (define cost (evaluate cost* sol))
 
-          (assert (not (equal? M-user* M-user)))
-;         (assert (not (equal? ((misinterpreter M-user*) p)
-;                              ((misinterpreter M-user) p))))
+;         (assert (not (equal? M-user* M-user)))
+          (assert
+            (not
+              (and (equal? ((misinterpreter M-user*) p)
+                           ((misinterpreter M-user) p))
+                   (mis->= M-user* M-user))))
           (assert (<= cost* cost))
 
           (define expected-out (unsafe!js->string ((misinterpreter M-user) p)))
           (define lyst (cdr (vector->list (struct->vector M-user))))
-          (define explanation (map cdr (filter car (map cons lyst mis-names))))
+          (define explanation (map cdr (filter car (map cons lyst mis-texts))))
 
           (printf "Found explanation with cost* $~a:\n" cost)
           (printf "If student expects: ~a\n" expected-out)
