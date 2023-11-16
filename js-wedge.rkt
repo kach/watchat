@@ -5,7 +5,6 @@
 (require "js.rkt")
 (require "js-wat.rkt")
 
-(current-bitwidth 5)
 (define (wedge target [known '()] [candidate #f])
   (begin
     (define M-user (make-mis*))

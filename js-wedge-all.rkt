@@ -16,7 +16,6 @@
     [(equal? m mis-arrstrnull) (list mis-arrstrbrackets)]
     [(equal? m mis-arrstrundef) (list mis-arrstrbrackets)]
     [(equal? m mis-sortraw) (list mis-<castsnum)]
-    [(equal? m mis-nanstrzero) (list mis-+castnum)]
     [(equal? m mis-nanstrempty) (list mis-+castnum)]
     [(equal? m mis-==boolcoerce) (list mis-==strict)]
     [else '()]))

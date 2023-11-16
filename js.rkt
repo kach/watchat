@@ -87,7 +87,7 @@
      )]
   [op (choose op-typeof op-+un op--un op-! op-sort
               op-=== op-== op-+ op-- op-+un op-< op->= op-index
-              op-?: op-&& op-|| #|op-??|# op-pair
+              op-?: op-&& op-|| op-?? op-pair
               )]
   [num (choose 0 1 2 10 'NaN)]
   [str (choose '() '(a b c) '(OPEN) '(0) '(1) '(2) '(1 0))]
