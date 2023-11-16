@@ -52,6 +52,7 @@
   <li>([] || "abc")[3]</li>
   <li>'11' &lt; '2'</li>
   <li>['null', typeof(null)]['1']</li>
+  <li>[false, null] + [false]</li>
 </ul>
 </details>
 
@@ -109,6 +110,10 @@ window.addEventListener('load', function() {
 
     function reqListener() {
       const res = JSON.parse(this.responseText);
+      if (res === 'Unsupported syntax, sorry!') {
+        out.textContent = 'Out[' + n + ']: ' + res;
+        return;
+      }
       out.textContent = 'Out[' + n + ']: ' + res.out + '\t';
 
       if (res.explanations.length === 0) return;

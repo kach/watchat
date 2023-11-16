@@ -32,12 +32,13 @@
           (define cost (evaluate cost* sol))
 
 ;         (assert (not (equal? M-user* M-user)))
+;         (assert (<= cost* cost))
+
           (assert
             (not
               (and (equal? ((misinterpreter M-user*) p)
                            ((misinterpreter M-user) p))
                    (mis->= M-user* M-user))))
-          (assert (<= cost* cost))
 
           (define expected-out (unsafe!js->string ((misinterpreter M-user) p)))
           (define lyst (cdr (vector->list (struct->vector M-user))))
@@ -49,7 +50,7 @@
           (map displayln explanation)
           (newline)
 
-          (if (= n 1)
+          (if (= n 0)
             (begin
               (displayln "(Possibly more...)")
               acc)

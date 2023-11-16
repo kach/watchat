@@ -4,8 +4,8 @@
 (require rosette/lib/angelic)
 
 (require racket/trace)
-(current-trace-print-args (lambda (name x y z n) (printf "> ~a ~a\n" n name)))
-(current-trace-print-results (lambda (name . xyz) (printf "<\n")))
+;(current-trace-print-args (lambda (name x y z n) (printf "> ~a ~a\n" n name)))
+;(current-trace-print-results (lambda (name . xyz) (printf "<\n")))
 
 ;; https://github.com/denysdovhan/wtfjs#-motivation
 
@@ -83,14 +83,14 @@
      (js-number (num))
      (js-string (str))
      (js-object (?? boolean?) '())
-     (op-do (op) (expr) (expr) (expr))
+     (op-do (op) (expr) (expr) (js-null))
      )]
   [op (choose op-typeof op-+un op--un op-! op-sort
               op-=== op-== op-+ op-- op-+un op-< op->= op-index
               op-?: op-&& op-|| #|op-??|# op-pair
               )]
   [num (choose 0 1 2 10 'NaN)]
-  [str (choose '() '(a b c) '(OPEN) '(1))]
+  [str (choose '() '(a b c) '(OPEN) '(0) '(1) '(2) '(1 0))]
   )
 
 (define-syntax (declare-mis stx)
@@ -127,8 +127,6 @@
    "null is printed as empty string in arrays")
   (nanstrempty 1
    "NaN prints as the string 'NaN', not empty")
-  (nanstrzero 1
-   "NaN prints as the string 'NaN', not zero")
   (nullstrempty 1
    "null casts to the string 'null', not the empty string.")
   (undefstrempty 1
@@ -230,13 +228,11 @@
 )
 
 (define (char->codepoint c)
-  (for/all ([c c])
-  (length-bv (member c ASCII) (bitvector 8)))
-  )
+  (for/all ([c c])  ; performance critical!
+    (length-bv (member c ASCII) (bitvector 8))))
 
 ;; 13.5.3
 (define (sem-typeof a)
-  (for/all ([a a])
   (cond
     [(and (mis-nullobj M) (js-null? a)) (js-string '(n u l l))]
     [(js-null? a) (js-string '(o b j e c t))]
@@ -244,10 +240,10 @@
     [(js-boolean? a) (js-string '(b o o l e a n))]
     [(js-number? a) (js-string '(n u m b e r))]
     [(js-string? a) (js-string '(s t r i n g))]
-    [(and (mis-arrayobj M) (js-object? a) (js-object-is-array? a)) (js-string '(a r r a y))]
+    [(and (mis-arrayobj M) (js-object? a) (js-object-is-array? a))
+     (js-string '(a r r a y))]
     [(js-object? a) (js-string '(o b j e c t))]
     ))
-    )
 
 ;; 13.5.7
 (define (sem-op-! a)
@@ -362,7 +358,6 @@
 (define (sem-Number::toString n [gas 3])
   (cond [(= gas 0) '(I n f i n i t y)]
         [(and (mis-nanstrempty M) (equal? n 'NaN)) '()]
-        [(and (mis-nanstrzero M) (equal? n 'NaN)) '(0)]
         [(equal? n 'NaN) '(N a N)]
         [(< n 0) (cons '- (sem-Number::toString (- n) (- gas 1)))]
         [(< n 10) (list n)]
@@ -619,8 +614,13 @@
 
 ;; 13.10.1 -> 7.2.13
 (define (sem-op-< x y)
-  (let [(px (if (mis-<castsnum M) (sem-ToNumber x) (sem-ToPrimitive x 'NUMBER)))
-        (py (if (mis-<castsnum M) (sem-ToNumber y) (sem-ToPrimitive y 'NUMBER)))]
+  (let* [(nx (sem-ToNumber x))
+         (ny (sem-ToNumber y))
+         (should-num (and (mis-<castsnum M)
+                     (not (equal? (js-number-value nx) 'NaN))
+                     (not (equal? (js-number-value ny) 'NaN))))
+         (px (if should-num nx (sem-ToPrimitive x 'NUMBER)))
+         (py (if should-num ny (sem-ToPrimitive y 'NUMBER)))]
        (if (and (js-string? px) (js-string? py))
            (js-boolean (sem-String::lessThan (js-string-value px)
                                              (js-string-value py)))
@@ -718,7 +718,6 @@
     ))
 
 (define (reduce-expression e)
-  (for/all ([e e])
   (destruct e
     [(js-error) e]
     [(js-null) e]
@@ -752,7 +751,6 @@
        )]
     [_ (reduce-expression (op-doify e))]
     ))
-    )
 
 #;(trace
 ; sem-typeof

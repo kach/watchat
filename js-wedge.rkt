@@ -5,39 +5,56 @@
 (require "js.rkt")
 (require "js-wat.rkt")
 
-(define (wedge target)
+(current-bitwidth 5)
+(define (wedge target [known '()] [candidate #f])
   (begin
     (define M-user (make-mis*))
-    (define p (time (js-expr* #:depth 2)))
+    (define p
+      (or candidate (time (js-expr* #:depth 2))))
 
     (define (check-M M-user)
       (begin
+        (assume (not (ormap (lambda (m) (m M-user)) known)))
         (define r1 (time ((misinterpreter M-user) p)))
         (define r2 (time ((misinterpreter (make-M (list target))) p)))
-
-        ; (assume (<= (mis-cost M-user) 2))
-        ; (assert (<=> (or (mis-oneindexed M-user) (mis-emptyarraytruthy M-user)) (not (equal? r1 r2))))
         (assert (<=> (target M-user) (equal? r1 r2)))
         ))
 
-    (define sol
-      (time (synthesize #:forall M-user
-                        #:guarantee (check-M M-user))))
-
-    (if (sat? sol)
+    (if candidate
       (begin
-        (printf "Diagnostic program: ~a\n" (unsafe!js->string (evaluate p sol)))
-        (printf "True output: ~a\n" (unsafe!js->string ((misinterpreter M-standard) (evaluate p sol))))
-        (void (explain-program (evaluate p sol))))
+        (define sol (time (verify (check-M M-user))))
+        (if (sat? sol)
+          (begin
+            (define M-bad (evaluate M-user sol))
+            (map (lambda (a b) (printf "~a ~a\n" a b))
+                 (cdr (vector->list (struct->vector M-bad)))
+                 mis-names)
+            (displayln ((misinterpreter M-bad) p))
+            (displayln "DONE"))
+          (begin
+            (displayln "Okay!"))))
       (begin
-        (displayln "Synthesis returned UNSAT.")))))
+        (define sol (time (synthesize #:forall M-user #:guarantee (check-M M-user))))
+        (if (sat? sol)
+          (begin
+            (printf "Diagnostic program: ~a\n" (unsafe!js->string (evaluate p sol)))
+            (printf "True output: ~a\n" (unsafe!js->string ((misinterpreter M-standard) (evaluate p sol))))
+            (void (explain-program (evaluate p sol))))
+          (begin
+            (displayln "Synthesis returned UNSAT.")))))))
 
-;(explain-program (op-== (op-+un (js-object #f '())) (js-number 'NaN)))
-;(explain-program (op-typeof (op-?: (js-object #t '()) (js-null) (js-undefined))))
-;(explain-program (op-index (js-string '(a b c)) (js-number 1)))
-;(explain-program (op-index (op-sort (js-object #t (list (js-number 11) (js-number 9)))) (js-number 0)))
-;(explain-program (op-index (op-sort (js-object #t (list (js-number 11) (js-number 10)))) (js-number 1)))
-;(explain-program (op-?? (op-== (js-number 'NaN) (js-number 'NaN)) (js-number 3)))
-;(explain-program (op-?? (js-number 'NaN) (js-number 3)))
+#|
+(wedge mis-arrstrnull (list mis-arrstrbrackets))
+(wedge mis-arrstrnull (list mis-arrstrbrackets)
+  (js-object #t
+    (list
+      (op-+ (js-string '()) (js-object #t (list)))
+      (op-+ (js-string '()) (js-object #t (list (js-null)))))))
+|#
+
+;(wedge mis-sortraw (list mis-<castsnum) (op-sort (js-object #t (list (js-number 20) (js-number 5)))))
+;(wedge mis-<castsnum '() (op-< (js-string '(1 0)) (js-string '(2))))
+;(wedge mis-nanstrempty (list mis-+castnum) (op-+ (js-string '()) (js-number 'NaN)))
+;(wedge mis-==boolcoerce (list mis-==strict) (op-== (js-boolean #t) (js-number 2)))
 
 (provide wedge)

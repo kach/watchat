@@ -8,13 +8,6 @@
 (require "js.rkt")
 (require "js-wat.rkt")
 
-(define (expr->js expr)
-  (match expr
-    ['(js-undefined) (js-undefined)]
-    ['(js-null) (js-null)]
-    [`(js-boolean ,b) (js-boolean b)]
-    ))
-
 (define (char->js-char c)
   (cond
     [(char-numeric? c)
