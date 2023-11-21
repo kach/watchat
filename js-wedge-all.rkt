@@ -1,5 +1,7 @@
 #lang racket
 
+;; seq 0 29 | time xargs -n 1 -P 15 time racket js-wedge-all.rkt
+
 (require "js.rkt")
 (require "js-wedge.rkt")
 

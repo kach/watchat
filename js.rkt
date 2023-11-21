@@ -83,7 +83,26 @@
      (js-number (num))
      (js-string (str))
      (js-object (?? boolean?) '())
-     (op-do (op) (expr) (expr) (js-null))
+     (op-do (op) (expr) (expr) (expr))
+     )]
+  [op (choose op-typeof op-+un op--un op-! op-sort
+              op-=== op-== op-+ op-- op-+un op-< op->= op-index
+              op-?: op-&& op-|| op-?? op-pair
+              )]
+  [num (choose 0 1 2 10 'NaN)]
+  [str (choose '() '(a b c) '(OPEN) '(0) '(1) '(2) '(1 0))]
+  )
+
+(define-grammar (js-expr-XL*)
+  [expr
+   (choose
+     (js-null) (js-undefined)
+     (js-boolean (?? boolean?))
+     (js-number (num))
+     (js-string (str))
+     (js-object (?? boolean?) '())
+     (op-do (op) (expr) (expr) (expr))
+     (js-object #t (list (js-number (num)) (js-number (num))))
      )]
   [op (choose op-typeof op-+un op--un op-! op-sort
               op-=== op-== op-+ op-- op-+un op-< op->= op-index
@@ -261,34 +280,22 @@
            (js-number (- (js-number-value n))))))
 
 ;; 13.14.1
-(define (sem-op-?: c t f)  ;; NOT EAGER
-  (define c+ (reduce-expression c))
-  (cond [(js-error? c+) c+]
-        [else
-         (if (js-boolean-value (sem-ToBoolean c+))
-             (reduce-expression t)
-             (reduce-expression f))]
-             ))
+(define (sem-op-?: c+ t+ f+)  ;; NOT EAGER
+  (if (js-boolean-value (sem-ToBoolean c+)) t+ f+))
 
 ;; 13.13.1
-(define (sem-op-&& a b)
-  (define a+ (reduce-expression a))
-  (cond [(js-error? a+) a+]
-        [(not (js-boolean-value (sem-ToBoolean a+))) ((if (mis-boolopsbool M) sem-ToBoolean identity) a+)]
-        [else ((if (mis-boolopsbool M) sem-ToBoolean identity)
-               (reduce-expression b))]))
+(define (sem-op-&& a+ b+)
+  (cond [(not (js-boolean-value (sem-ToBoolean a+)))
+         ((if (mis-boolopsbool M) sem-ToBoolean identity) a+)]
+        [else ((if (mis-boolopsbool M) sem-ToBoolean identity) b+)]))
 
-(define (sem-op-|| a b)
-  (define a+ (reduce-expression a))
-  (cond [(js-error? a+) a+]
-        [(js-boolean-value (sem-ToBoolean a+)) ((if (mis-boolopsbool M) sem-ToBoolean identity) a+)]
-        [else ((if (mis-boolopsbool M) sem-ToBoolean identity)
-               (reduce-expression b))]))
+(define (sem-op-|| a+ b+)
+  (cond [(js-boolean-value (sem-ToBoolean a+))
+         ((if (mis-boolopsbool M) sem-ToBoolean identity) a+)]
+        [else ((if (mis-boolopsbool M) sem-ToBoolean identity) b+)]))
 
-(define (sem-op-?? a b)
-  (define a+ (reduce-expression a))
-  (cond [(js-error? a+) a+]
-        [(or (js-null? a+)
+(define (sem-op-?? a+ b+)
+  (cond [(or (js-null? a+)
              (js-undefined? a+)
              (and (mis-??false M)
                   (js-boolean? a+)
@@ -296,7 +303,7 @@
              (and (mis-??nan M)
                   (js-number? a+)
                   (equal? (js-number-value a+) 'NaN)))
-         (reduce-expression b)]
+         b+]
         [else a+]))
 
 ;; 7.1.19 (sem-ToPropertyKey i)
@@ -677,31 +684,45 @@
              [((head tail) (split-at l 1))]
              (merge (mergesort head) (mergesort tail))))))
 
+(define (babysort l)
+  (cond
+    [(= (length l) 0) l]
+    [(= (length l) 1) l]
+    [(= (length l) 2)
+     (let* [(fst (first l))
+            (snd (second l))]
+       (if (> 0 (js-number-value (sem-CompareArrayElements fst snd)))
+           (list snd fst) l
+           ))]
+    [else (mergesort l)]
+    ))
+
 (define (sem-Array.prototype.sort a)
   (cond
     [(and (js-object? a) (js-object-is-array? a))
-     (js-object #t (mergesort (js-object-elements a)))]
+     (js-object #t (babysort (js-object-elements a)))]
     ; NOT can sort strings?
     [else (js-error)]
     ))
 
-(define (reduce-unop op a)
-  (let* [(a+ (reduce-expression a))]
-    (if (js-error? a+) a+ (op a+))))
-
-(define (reduce-binop op a b)
-  (let* [(a+ (reduce-expression a))
-         (b+ (reduce-expression b))]
-    (if (or (js-error? a+) (js-error? b+))
-        (js-error)
-        (op a+ b+))))
-
 (define (apply-op op a+ b+ c+)
   (cond
+    ;; unary / lazy
+    [(js-error? a+) (js-error)]
+    [(equal? op op-?:) (sem-op-?: a+ b+ c+)]
+    [(equal? op op-&&) (sem-op-&& a+ b+)]
+    [(equal? op op-||) (sem-op-|| a+ b+)]
+    [(equal? op op-??) (sem-op-?? a+ b+)]
+
     [(equal? op op-typeof) (sem-typeof a+)]
     [(equal? op op-!) (sem-op-! a+)]
-    [(equal? op op-index) (sem-op-index a+ b+)]
     [(equal? op op-sort) (sem-Array.prototype.sort a+)]
+    [(equal? op op-+un) (sem-op-+un a+)]
+    [(equal? op op--un) (sem-op--un a+)]
+
+    ;; binary
+    [(js-error? b+) (js-error)]
+    [(equal? op op-index) (sem-op-index a+ b+)]
     [(or
        (equal? op op-===)
        (and (mis-==strict M)
@@ -712,8 +733,6 @@
     [(equal? op op--) (sem-op-- a+ b+)]
     [(equal? op op-<) (sem-op-< a+ b+)]
     [(equal? op op->=) (sem-op->= a+ b+)]
-    [(equal? op op-+un) (sem-op-+un a+)]
-    [(equal? op op--un) (sem-op--un a+)]
     [(equal? op op-pair) (js-object #t (list a+ b+))]
     ))
 
@@ -729,26 +748,11 @@
      (js-object b (map reduce-expression elts))] ;; TODO: handle errors
 
     [(op-do op a b c)
-     (cond
-       [(equal? op op-?:)
-        (sem-op-?: a b c)]
-       [(equal? op op-&&)
-        (sem-op-&& a b)]
-       [(equal? op op-||)
-        (sem-op-|| a b)]
-       [(equal? op op-??)
-        (sem-op-?? a b)]
+     (let* [(a+ (reduce-expression a))
+            (b+ (reduce-expression b))
+            (c+ (reduce-expression c))]
+       (apply-op op a+ b+ c+))]
 
-       [else
-        (let [(a+ (reduce-expression a))]
-             (if (js-error? a+) (js-error)
-                 (let [(b+ (reduce-expression b))]
-                      (if (js-error? b+) (js-error)
-                          (let [(c+ (reduce-expression c))]
-                               (if (js-error? c+) (js-error)
-                                   (apply-op op a+ b+ c+)
-                                   ))))))]
-       )]
     [_ (reduce-expression (op-doify e))]
     ))
 
