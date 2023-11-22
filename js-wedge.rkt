@@ -74,5 +74,6 @@
 ;(wedge mis-<castsnum '() (op-< (js-string '(1 0)) (js-string '(2))))
 ;(wedge mis-nanstrempty (list mis-+castnum) (op-+ (js-string '()) (js-number 'NaN)))
 ;(wedge mis-==boolcoerce (list mis-==strict) (op-== (js-boolean #t) (js-number 2)))
-
+;(wedge mis-oneindexed '() (op-index (js-string '(1 0)) (js-number 1)))
+;(wedge mis-asciicomma '() (op->= (js-string '(1)) (js-string '(COMMA))))
 (provide wedge)

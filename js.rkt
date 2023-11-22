@@ -90,7 +90,7 @@
               op-?: op-&& op-|| op-?? op-pair
               )]
   [num (choose 0 1 2 10 'NaN)]
-  [str (choose '() '(a b c) '(OPEN) '(0) '(1) '(2) '(1 0))]
+  [str (choose '() '(OPEN) '(0) '(1) '(2) '(1 0) '(COMMA))]
   )
 
 (define-grammar (js-expr-XL*)
@@ -109,7 +109,7 @@
               op-?: op-&& op-|| op-?? op-pair
               )]
   [num (choose 0 1 2 10 'NaN)]
-  [str (choose '() '(a b c) '(OPEN) '(0) '(1) '(2) '(1 0))]
+  [str (choose '() '(OPEN) '(0) '(1) '(2) '(1 0) '(COMMA))]
   )
 
 (define-syntax (declare-mis stx)
@@ -190,8 +190,12 @@
    "If neither operand is a number, then comparison operators like < attempt to compare string representations of the operands lexicographically.")
   (asciiopenshut 1
    "The characters '[' and ']' sort after capital letters but before lowercase letters.")
+  (asciicomma 1
+   "The comma character (',') sorts before all letters, numbers, and delimiters.")
   (structuralequality 1
    "== and === compare objects and arrays by reference, not by value.")
+  (indexraw 1
+   "JavaScript casts all indexes to string, and then for array/string indexing checks if the strings represent numbers.")
 )
 (printf "I'm aware of ~a misconceptions.\n" (length mis-names))
 
@@ -222,6 +226,17 @@
 
 (define ASCII
   (cond
+    [(and (mis-asciiopenshut M) (mis-asciicomma M))
+     '(
+       SPACE
+       0 1 2 3 4 5 6 7 8 9
+       A B C D E F G H I J K L M
+       N O P Q R S T U V W X Y Z
+       a b c d e f g h i j k l m
+       n o p q r s t u v w x y z
+       OPEN SHUT
+       OPENCURLY SHUTCURLY COMMA
+     )]
     [(mis-asciiopenshut M)
      '(
        SPACE COMMA
@@ -232,6 +247,17 @@
        n o p q r s t u v w x y z
        OPEN SHUT
        OPENCURLY SHUTCURLY
+     )]
+    [(mis-asciicomma M)
+     '(
+       SPACE
+       0 1 2 3 4 5 6 7 8 9
+       A B C D E F G H I J K L M
+       N O P Q R S T U V W X Y Z
+       OPEN SHUT
+       a b c d e f g h i j k l m
+       n o p q r s t u v w x y z
+       OPENCURLY SHUTCURLY COMMA
      )]
     [else
      '(
@@ -318,30 +344,36 @@
            (if (equal? (sem-ToString n) s)
                n (js-undefined)))))
 
+(define (sem-IsIntegerIndexHelper n)
+  (cond
+    [(js-undefined? n) #f]
+    [(equal? (js-number-value n) 'NaN) #f]
+    ;; NOT allows negative indexing
+    [(< (js-number-value n) 0) #f]
+    [(mis-oneindexed M) (- (js-number-value n) 1)]
+    [else (js-number-value n)]
+    ))
+
 ;; 6.1.7
 (define (sem-IsIntegerIndex s)
   (let [(n (sem-CanonicalNumericIndexString s))]
-       (cond
-         [(js-undefined? n) #f]
-         [(equal? (js-number-value n) 'NaN) #f]
-         ;; NOT allows negative indexing
-         [(< (js-number-value n) 0) #f]
-         [(mis-oneindexed M) (- (js-number-value n) 1)]
-         [else (js-number-value n)]
-         )))
+       (sem-IsIntegerIndexHelper n)))
 
 ;; 7.1.18 (ToObject)
 ;; 13.3.3 (reference record), 6.2.5.5 (GetValue)
 
 (define (sem-op-index o i)
-  (let* [(k (sem-ToPropertyKey i))
-         (n (sem-IsIntegerIndex k))]
+  (let* [(n (if (mis-indexraw M)
+              (and (js-number? i) (sem-IsIntegerIndexHelper i))
+              (sem-IsIntegerIndex (sem-ToPropertyKey i))))]
     (cond
       [(js-undefined? o) (js-error)]
       [(js-null? o) (js-error)]
 
-      [(js-number? o) (if (mis-noimplicitobjification M) (js-error) (js-undefined))]
-      [(js-boolean? o) (if (mis-noimplicitobjification M) (js-error) (js-undefined))]
+      [(js-number? o)
+       (if (mis-noimplicitobjification M) (js-error) (js-undefined))]
+      [(js-boolean? o)
+       (if (mis-noimplicitobjification M) (js-error) (js-undefined))]
 
       [(and (js-object? o)
             (not (js-object-is-array? o))) (js-undefined)]
