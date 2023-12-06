@@ -53,10 +53,11 @@
   <li>'11' &lt; '2'</li>
   <li>['null', typeof(null)]['1']</li>
   <li>[false, null] + [false]</li>
+  <li>[] == ![]</li>
 </ul>
 </details>
 
-<input type="text" id="prompt" style="width: 100%;" autofocus/>
+<input type="text" id="prompt" style="width: 100%; box-sizing: border-box;" autofocus/>
 <div id="log"></div>
 
 <script>
@@ -121,15 +122,24 @@ window.addEventListener('load', function() {
       out.appendChild(wat);
       wat.addEventListener('click', function() {
         const myself = this;
+        const map = {};
+
         for (var i = 0; i < res.explanations.length; i++) {
+          if (map[res.explanations[i].out]) {
+            console.log(map[res.explanations[i].out]);
+            map[res.explanations[i].out].textContent += ' ' + res.explanations[i].text.join(' ');
+            continue;
+          }
           const data = document.createElement('details');
           const summ = document.createElement('summary');
           const text = document.createElement('pre');
           summ.textContent = 'I expected ' + res.explanations[i].out;
           data.appendChild(summ);
           data.appendChild(text);
-          text.textContent = res.explanations[i].text.join('\n');
+          text.textContent = res.explanations[i].text.join(' ');
           myself.insertAdjacentElement('afterend', data);
+
+          map[res.explanations[i].out] = text;
         }
         myself.remove();
       });

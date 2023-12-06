@@ -4,6 +4,8 @@
 (require rosette/lib/angelic)
 
 (require racket/trace)
+
+(current-trace-notify void)
 ;(current-trace-print-args (lambda (name x y z n) (printf "> ~a ~a\n" n name)))
 ;(current-trace-print-results (lambda (name . xyz) (printf "<\n")))
 
@@ -124,78 +126,83 @@
     `(begin
        (struct mis ,names #:transparent)
        (define mis-names (list . ,(map misify names)))
+       (define mis-tags (quote ,(map misify names)))
+       (trace . ,(map misify names))
        (define mis-texts (list . ,texts))
        (define mis-costs (list . ,costs)))
     )))
+
+(define (tag->text tag)
+  (cdr (assoc tag (map cons mis-tags mis-texts))))
 
 (define (make-M names)
   (apply mis (map (lambda (name) (not (false? (member name names)))) mis-names)))
 
 (declare-mis
   (nullobj 1
-   "null has type 'object', not 'null'")
+   "null has type \"object\" (not \"null\", as you might expect).")
   (arrayobj 1
-   "array has type 'object', not 'array'")
+   "array has type \"object\" (not \"array\", as you might expect).")
   (naneq 1
-   "As a special case, NaN is never equal to NaN")
+   "As a special case, NaN is never equal to anything (even NaN itself).")
   (emptyarraytruthy 1
-   "Empty objects like {} and [] are truthy")
+   "Empty objects ({} and []) are truthy.")
   (arrstrundef 1
-   "undefined is printed as empty string in arrays")
+   "undefined is printed as empty string when arrays are cast to string.")
   (arrstrnull 1
-   "null is printed as empty string in arrays")
+   "null is printed as empty string when arrays are cast to string.")
   (nanstrempty 1
-   "NaN prints as the string 'NaN', not empty")
+   "NaN prints as the string \"NaN\" (not \"\", as you might expect).")
   (nullstrempty 1
-   "null casts to the string 'null', not the empty string.")
+   "null casts to the string \"null\", not the empty string.")
   (undefstrempty 1
-   "undefined casts to the string 'undefined', not the empty string.")
+   "undefined casts to the string \"undefined\" (not \"\", as you might expect).")
   (obj0 1
-   "{} is NaN, not 0, when casted to numbers.")
+   "{} is NaN (not 0) when cast to number.")
   (oneindexed 1
    "JavaScript is 0-indexed, not 1-indexed.")
   (undef0 1
-   "undefined casts to number as NaN, not as 0")
+   "undefined casts to number as NaN (not 0, as you might expect).")
   (nullnan 1
-   "null casts to number as 0, not as NaN")
+   "null casts to number as 0 (not NaN, as you might expect).")
   (sortraw 1
-   "Array.prototype.sort() casts elements (including numbers) to string and compares lexicographically")
+   "Array.prototype.sort() casts elements (including numbers) to string and compares them lexicographically.")
   (??false 1
-   "?? does not treat false as nullish")
+   "?? does not treat false as nullish.")
   (??nan 1
-   "?? does not treat nan as nullish")
+   "?? does not treat nan as nullish.")
   (+arrcat 1
-   "The + operator does not concatenate arrays")
+   "The + operator does not concatenate arrays; instead, it casts them to strings.")
   (boolopsbool 1
-   "Short-circuiting boolean operators like && and || return the determining operand rather than a boolean")
+   "Short-circuiting boolean operators like && and || return the determining operand (rather than a boolean value).")
   (==strict 1
-   "The == operator, unlike the === operator, attempts a series of type coercions.")
+   "The == operator, unlike the === operator, attempts a series of type coercions that can cause unexpected results.")
   (+semistrict 1
-   "The + operator always tries to cast its operands to number or string.")
+   "When given operands that are neither numbers nor strings, the + operator tries to cast them to numbers (if possible) or else strings.")
   (objstr 1
-   "Objects cast to the string '[object Object]'")
+   "Objects cast to the string \"[object Object]\".")
   (arrstrbrackets 1
-   "When stringified, arrays don't have []s around them.")
+   "When converted to string, arrays don't have []s around them.")
   (emptystringnan 1
-   "The empty string by definition casts to 0, not NaN")
+   "The empty string by definition casts to 0 (not NaN, as you might expect).")
   (+castnum 1
-   "The + operator only attempts to add if both sides are numbers; otherwise, it casts to string and concatenates.")
+   "The + operator only attempts to add if both sides are numbers. Otherwise, it casts its operands to string and concatenates them.")
   (noimplicitobjification 1
    "When subscripted, primitive booleans and numbers are implicitly converted to Boolean and Number objects.")
   (==boolcoerce 1
-   "When one side of an '==' is a boolean, JS does not attempt to convert the other side to a boolean as well. Instead, the boolean is converted to a number (0 or 1) and the comparison is tried again.")
+   "When one side of an == is a boolean, JS does not attempt to convert the other side to a boolean as well. Instead, the boolean is converted to a number (0 or 1) and the comparison is tried again.")
   (>=is>or== 1
-   "The >= operator is defined as NOT <, rather than > or ==.")
+   "The >= operator is defined as the negation of <, rather than the disjunction of > and ==.")
   (<castsnum 1
    "If neither operand is a number, then comparison operators like < attempt to compare string representations of the operands lexicographically.")
   (asciiopenshut 1
-   "The characters '[' and ']' sort after capital letters but before lowercase letters.")
+   "The characters \"[\" and \"]\" sort after capital letters but before lowercase letters.")
   (asciicomma 1
-   "The comma character (',') sorts before all letters, numbers, and delimiters.")
+   "The comma character (\",\") sorts before all letters, numbers, and delimiters.")
   (structuralequality 1
    "== and === compare objects and arrays by reference, not by value.")
   (indexraw 1
-   "JavaScript casts all indexes to string, and then for array/string indexing checks if the strings represent numbers.")
+   "JavaScript casts all indices to string. When indexing arrays and strings, it checks if the indices represent numbers.")
 )
 (printf "I'm aware of ~a misconceptions.\n" (length mis-names))
 
@@ -224,6 +231,7 @@
 
 (define (misinterpreter M)
 
+(define (char->codepoint c)
 (define ASCII
   (cond
     [(and (mis-asciiopenshut M) (mis-asciicomma M))
@@ -272,7 +280,6 @@
      )])
 )
 
-(define (char->codepoint c)
   (for/all ([c c])  ; performance critical!
     (length-bv (member c ASCII) (bitvector 8))))
 
@@ -788,43 +795,44 @@
     [_ (reduce-expression (op-doify e))]
     ))
 
+(trace reduce-expression sem-ToBoolean sem-ToNumber sem-ToString sem-Array::toString sem-Object::toString)
 #;(trace
-; sem-typeof
-; sem-op-!
-; sem-op-+un
-; sem-op--un
-; sem-op-?:
-; sem-op-&&
-; sem-op-||
-; sem-op-??
-; sem-ToPropertyKey
-; sem-CanonicalNumericIndexString
-; sem-IsIntegerIndex
-; sem-op-index
-; sem-CompareArrayElements
-; sem-Array.prototype.sort
-; mergesort merge my-split-at
-; sem-Number::toString
-; sem-Number::equal
-; sem-ToBoolean
-; sem-Array::toString-stringify
-; sem-Array::toString-intercalate
-; sem-Array::toString
-; sem-Object::toString
-; sem-Object::valueOf
-; sem-ToPrimitive
-; sem-ToNumber
-; sem-StringToNumber
-; sem-StringToNumber-helper
-; sem-ToString
-; sem-op-===
-; sem-op-==
-; sem-op-+
-; sem-op--
-; sem-Number::lessThan
-; sem-String::lessThan
-; sem-op-<
-; sem-op->=
+ sem-typeof
+ sem-op-!
+ sem-op-+un
+ sem-op--un
+ sem-op-?:
+ sem-op-&&
+ sem-op-||
+ sem-op-??
+ sem-ToPropertyKey
+ sem-CanonicalNumericIndexString
+ sem-IsIntegerIndex
+ sem-op-index
+ sem-CompareArrayElements
+ sem-Array.prototype.sort
+ mergesort merge
+ sem-Number::toString
+ sem-Number::equal
+ sem-ToBoolean
+ sem-Array::toString-stringify
+ sem-Array::toString-intercalate
+ sem-Array::toString
+ sem-Object::toString
+ sem-Object::valueOf
+ sem-ToPrimitive
+ sem-ToNumber
+ sem-StringToNumber
+ sem-StringToNumber-helper
+ sem-ToString
+ sem-op-===
+ sem-op-==
+ sem-op-+
+ sem-op--
+ sem-Number::lessThan
+ sem-String::lessThan
+ sem-op-<
+ sem-op->=
 )
 
 reduce-expression

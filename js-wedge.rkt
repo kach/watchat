@@ -76,4 +76,6 @@
 ;(wedge mis-==boolcoerce (list mis-==strict) (op-== (js-boolean #t) (js-number 2)))
 ;(wedge mis-oneindexed '() (op-index (js-string '(1 0)) (js-number 1)))
 ;(wedge mis-asciicomma '() (op->= (js-string '(1)) (js-string '(COMMA))))
+;(wedge mis-emptyarraytruthy '() (op-|| (js-object #t '()) (js-boolean #t)))
+
 (provide wedge)
