@@ -139,69 +139,69 @@
   (apply mis (map (lambda (name) (not (false? (member name names)))) mis-names)))
 
 (declare-mis
-  (nullobj 1
+  (nullobj 10
    "null has type \"object\" (not \"null\", as you might expect).")
-  (arrayobj 1
+  (arrayobj 10
    "array has type \"object\" (not \"array\", as you might expect).")
-  (naneq 1
+  (naneq 10
    "As a special case, NaN is never equal to anything (even NaN itself).")
-  (emptyarraytruthy 1
+  (emptyarraytruthy 10
    "Empty objects ({} and []) are truthy.")
-  (arrstrundef 1
+  (arrstrundef 10
    "undefined is printed as empty string when arrays are cast to string.")
-  (arrstrnull 1
+  (arrstrnull 10
    "null is printed as empty string when arrays are cast to string.")
-  (nanstrempty 1
+  (nanstrempty 10
    "NaN prints as the string \"NaN\" (not \"\", as you might expect).")
-  (nullstrempty 1
+  (nullstrempty 10
    "null casts to the string \"null\", not the empty string.")
-  (undefstrempty 1
+  (undefstrempty 10
    "undefined casts to the string \"undefined\" (not \"\", as you might expect).")
-  (obj0 1
+  (obj0 10
    "{} is NaN (not 0) when cast to number.")
-  (oneindexed 1
+  (oneindexed 10
    "JavaScript is 0-indexed, not 1-indexed.")
-  (undef0 1
+  (undef0 10
    "undefined casts to number as NaN (not 0, as you might expect).")
-  (nullnan 1
+  (nullnan 10
    "null casts to number as 0 (not NaN, as you might expect).")
-  (sortraw 1
+  (sortraw 10
    "Array.prototype.sort() casts elements (including numbers) to string and compares them lexicographically.")
-  (??false 1
+  (??false 10
    "?? does not treat false as nullish.")
-  (??nan 1
+  (??nan 10
    "?? does not treat nan as nullish.")
-  (+arrcat 1
+  (+arrcat 5
    "The + operator does not concatenate arrays; instead, it casts them to strings.")
-  (boolopsbool 1
+  (boolopsbool 10
    "Short-circuiting boolean operators like && and || return the determining operand (rather than a boolean value).")
-  (==strict 1
+  (==strict 10
    "The == operator, unlike the === operator, attempts a series of type coercions that can cause unexpected results.")
-  (+semistrict 1
+  (+semistrict 15
    "When given operands that are neither numbers nor strings, the + operator tries to cast them to numbers (if possible) or else strings.")
-  (objstr 1
+  (objstr 10
    "Objects cast to the string \"[object Object]\".")
-  (arrstrbrackets 1
+  (arrstrbrackets 10
    "When converted to string, arrays don't have []s around them.")
-  (emptystringnan 1
+  (emptystringnan 10
    "The empty string by definition casts to 0 (not NaN, as you might expect).")
-  (+castnum 1
+  (+castnum 10
    "The + operator only attempts to add if both sides are numbers. Otherwise, it casts its operands to string and concatenates them.")
-  (noimplicitobjification 1
+  (noimplicitobjification 10
    "When subscripted, primitive booleans and numbers are implicitly converted to Boolean and Number objects.")
-  (==boolcoerce 1
+  (==boolcoerce 10
    "When one side of an == is a boolean, JS does not attempt to convert the other side to a boolean as well. Instead, the boolean is converted to a number (0 or 1) and the comparison is tried again.")
-  (>=is>or== 1
+  (>=is>or== 10
    "The >= operator is defined as the negation of <, rather than the disjunction of > and ==.")
-  (<castsnum 1
+  (<castsnum 10
    "If neither operand is a number, then comparison operators like < attempt to compare string representations of the operands lexicographically.")
   (asciiopenshut 1
    "The characters \"[\" and \"]\" sort after capital letters but before lowercase letters.")
-  (asciicomma 1
+  (asciicomma 10
    "The comma character (\",\") sorts before all letters, numbers, and delimiters.")
-  (structuralequality 1
+  (structuralequality 10
    "== and === compare objects and arrays by reference, not by value.")
-  (indexraw 1
+  (indexraw 10
    "JavaScript casts all indices to string. When indexing arrays and strings, it checks if the indices represent numbers.")
 )
 (printf "I'm aware of ~a misconceptions.\n" (length mis-names))
@@ -224,8 +224,10 @@
   (apply mis (make-symlist* (length mis-names) boolean?)))
 
 (define (mis-cost M)
-  (apply + (map (lambda (x) (if x 1 0))
-                (cdr (vector->list (struct->vector M))))))
+  (apply + (map (lambda (x c) (if x c 0))
+                (cdr (vector->list (struct->vector M)))
+                mis-costs
+                )))
 
 
 
