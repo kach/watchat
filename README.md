@@ -1,8 +1,8 @@
 # WatChat
 
-This is the codebase for our project on a cognitively-inspired automatic explanation engine for JavaScript. You can read more in our preliminary report presented at PLATEAU 2024:
+This is the codebase for our project on a cognitively-inspired automatic explanation engine for JavaScript. You can read more in our [preliminary report](https://arxiv.org/abs/2403.05334) presented at PLATEAU 2024:
 
-**From 'Why?' to 'WAT!': Explaining perplexing programs by debugging mental models**
+**WatChat: Explaining perplexing programs by debugging mental models**
 
 _Kartik Chandra, Tzu-Mao Li Rachit Nigam, Joshua Tenenbaum and Jonathan Ragan-Kelley_
 
